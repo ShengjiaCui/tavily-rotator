@@ -53,6 +53,7 @@
   .badge.standby { background: var(--code-bg); color: var(--muted); }
   .keyid { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); }
   .note { font-size: 12px; color: var(--muted); max-width: 180px; }
+  .usage-cell { font-family: ui-monospace, monospace; font-size: 12px; white-space: nowrap; }
   .btn {
     display: inline-block; padding: 5px 12px; border: 1px solid var(--border);
     border-radius: 4px; background: var(--card); color: var(--fg);
@@ -157,6 +158,8 @@
 <script>
 const api = (path) => '/api' + path;
 const $ = (id) => document.getElementById(id);
+let usageData = {};  // 查询全部后存这里,idx → {remaining, plan_usage, plan_limit, error}
+let lastState = null; // 缓存 state,refreshAll 后只重渲染表格
 
 async function loadState() {
   try {
@@ -165,6 +168,7 @@ async function loadState() {
       fetch(api('/rotations')).then(r => r.json()),
     ]);
     renderState(stateRes);
+    lastState = stateRes;
     renderRotations(rotRes);
     $('sub').textContent = `127.0.0.1:8731 · ${stateRes.pool_size} 个 key · 阈值 ${stateRes.rotate_threshold}`;
   } catch (e) {
@@ -201,11 +205,31 @@ function renderState(s) {
     const isActive = k.idx === s.active_idx;
     const badge = isActive ? '<span class="badge active">active</span>'
       : `<span class="badge standby">#${k.idx}</span>`;
+    // 用量列:从 usageData 取(查询全部后填入),没查过显示 —
+    const u = usageData[k.idx];
+    let usageCell;
+    if (u) {
+      if (u.error) {
+        // 查询出错(限流/无效 key 等)
+        const shortErr = u.error.includes('429') ? '限流' : (u.error.includes('401') ? '无效' : '错误');
+        usageCell = `<span style="color:var(--warn);">⚠ ${shortErr}</span>`;
+      } else if (u.remaining !== null && u.remaining !== undefined) {
+        const rem = u.remaining;
+        const warnColor = rem < s.rotate_threshold ? 'color:var(--warn);font-weight:600;' : '';
+        const usedText = u.plan_usage !== null ? `${u.plan_usage}/${u.plan_limit}` : '?';
+        usageCell = `<span style="${warnColor}">${rem}</span> <span style="color:var(--faint);font-size:11px;">剩余(${usedText})</span>`;
+      } else {
+        usageCell = '<span style="color:var(--faint);">?</span>';
+      }
+    } else {
+      usageCell = '<span style="color:var(--faint);">—</span>';
+    }
     return `<tr>
       <td>${k.idx}</td>
       <td>${esc(k.label)}</td>
       <td class="keyid">${esc(k.secret_masked)}</td>
       <td>${badge}</td>
+      <td class="usage-cell">${usageCell}</td>
       <td class="note">${esc(k.note || '—')}</td>
       <td>
         <button class="btn sm" onclick="editKey(${k.idx},'${esc(k.label)}','${esc(k.note)}')">编辑</button>
@@ -215,7 +239,7 @@ function renderState(s) {
   }).join('');
   $('keys-area').innerHTML = `
     <table>
-      <thead><tr><th>#</th><th>label</th><th>key</th><th>状态</th><th>备注</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>label</th><th>key</th><th>状态</th><th>本月用量</th><th>备注</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
@@ -314,23 +338,33 @@ async function deleteKey(idx, label) {
 // 查询全部用量
 async function refreshAll() {
   showAlert('🔍 正在查询所有 key 的 /usage...', 'ok');
+  // 给"查询全部"按钮加 loading 态
+  const btn = event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = '🔍 查询中...'; }
   try {
     const res = await fetch(api('/keys/refresh-all'), {method: 'POST'});
     const data = await res.json();
-    let html = '<table><thead><tr><th>#</th><th>label</th><th>剩余</th><th>已用</th><th>状态</th></tr></thead><tbody>';
+    // 存到全局,按 idx 索引
+    usageData = {};
+    let okCount = 0, warnCount = 0, errCount = 0;
     data.results.forEach(r => {
-      const rem = r.remaining !== null ? r.remaining : '—';
-      const used = r.plan_usage !== null ? `${r.plan_usage}/${r.plan_limit}` : '—';
-      const status = r.error ? `<span class="badge retired">错误</span>` :
-        (r.remaining !== null && r.remaining < 20 ? '<span class="badge retired">快耗尽</span>' :
-         '<span class="badge standby">正常</span>');
-      html += `<tr><td>${r.idx}</td><td>${esc(r.label)}</td><td>${rem}</td><td>${used}</td><td>${status}</td></tr>`;
+      usageData[r.idx] = r;
+      if (r.error) errCount++;
+      else if (r.remaining !== null && r.remaining < (lastState?.rotate_threshold || 20)) warnCount++;
+      else okCount++;
     });
-    html += '</tbody></table>';
-    showAlert('✓ 查询完成', 'ok', html);
-    loadState(); // 刷新主面板(active remaining 可能更新)
+    // 重渲染表格(用缓存的 state,只更新用量列)
+    if (lastState) renderState(lastState);
+    // 池总剩余
+    const totalRemaining = data.results.reduce((s, r) => s + (r.remaining || 0), 0);
+    const totalLimit = data.results.reduce((s, r) => s + (r.plan_limit || 1000), 0);
+    showAlert(`✓ 查询完成:${okCount} 正常 / ${warnCount} 快耗尽 / ${errCount} 错误 · 池总剩余 ${totalRemaining}/${totalLimit}`, 'ok');
+    // 3 秒后清提示
+    setTimeout(() => { $('alert-area').innerHTML = ''; }, 3000);
   } catch (e) {
     showAlert('✗ 查询失败: ' + e.message, '');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 查询全部用量'; }
   }
 }
 

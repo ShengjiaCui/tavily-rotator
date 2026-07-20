@@ -148,6 +148,10 @@ async fn rotate_to_next(
     let mut next = current;
     for offset in 1..=n {
         let candidate = (current + offset) % n;
+        // 节流:连续查多个 key 会触发 Tavily rate limit(429),间隔 1.5 秒
+        if offset > 1 {
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+        }
         // 验证候选 key 有效(查 /usage 看有没有额度)
         match tavily::query_usage(&state.http, &cfg.keys[candidate].secret).await {
             Ok((plan_usage, plan_limit, _, _, _, _, _)) => {

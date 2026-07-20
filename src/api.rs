@@ -421,6 +421,11 @@ async fn refresh_all(State(state): State<Arc<AppState>>) -> Json<RefreshAllRespo
     let mut results = Vec::with_capacity(cfg.keys.len());
 
     for (i, k) in cfg.keys.iter().enumerate() {
+        // 节流:Tavily /usage 有 rate limit,连续查多个 key 会 429。
+        // 每个 key 之间间隔 1.5 秒(实测足够避开限流)。
+        if i > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+        }
         match crate::tavily::query_usage(&state.http, &k.secret).await {
             Ok((plan_usage, plan_limit, _, _, _, _, _)) => {
                 let remaining = plan_limit.saturating_sub(plan_usage);
