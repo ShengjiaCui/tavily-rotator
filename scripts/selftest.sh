@@ -96,13 +96,16 @@ else
     fail "launchctl getenv TAVILY_API_KEY 无值(daemon 未推送环境变量)"
 fi
 
-# 9. tvly auth 未 login(auth_source 必须为 null)
+# 9. tvly auth source 正确(null = 无认证 或 env var = 用环境变量,都 OK;
+#    stored/path = tvly login 了,会覆盖环境变量注入,轮换失效)
 if command -v tvly >/dev/null 2>&1; then
     AUTH_SRC=$(tvly auth --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("source"))' 2>/dev/null || echo "ERROR")
-    if [ "$AUTH_SRC" = "None" ] || [ "$AUTH_SRC" = "null" ]; then
-        pass "tvly 未 login(auth_source=null,轮换生效前提)"
+    # null/None 或包含 "environment variable" 都算正确(用环境变量)
+    if [ "$AUTH_SRC" = "None" ] || [ "$AUTH_SRC" = "null" ] || \
+       echo "$AUTH_SRC" | grep -qi "environment variable"; then
+        pass "tvly auth_source 正确($AUTH_SRC,轮换生效)"
     else
-        fail "tvly 已 login(auth_source=$AUTH_SRC),会覆盖环境变量注入,请运行 tvly logout"
+        fail "tvly auth_source=$AUTH_SRC(tvly login 了,会覆盖环境变量注入,请运行 tvly logout)"
     fi
 else
     fail "tvly 不在 PATH(需安装:见 Web 面板一键安装)"
