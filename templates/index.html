@@ -285,6 +285,44 @@
 
   .empty { color: var(--fg-tertiary); font-style: italic; text-align: center; padding: 24px; font-size: 13px; }
 
+  /* === 当前生效配置(只读快照)=== */
+  .config-snapshot {
+    background: var(--surface-2); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius); padding: 18px 22px; margin-bottom: 16px;
+  }
+  .snapshot-head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 14px;
+  }
+  .snapshot-title { font-size: 12px; font-weight: 600; color: var(--fg-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+  .snapshot-refresh {
+    cursor: pointer; color: var(--fg-tertiary); font-size: 16px;
+    padding: 2px 6px; border-radius: 4px; transition: all 0.12s;
+    user-select: none;
+  }
+  .snapshot-refresh:hover { color: var(--accent); background: var(--accent-bg); }
+  .snapshot-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+  }
+  .snapshot-item {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 8px 12px; background: var(--surface);
+    border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);
+  }
+  .snapshot-item .k {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px;
+    color: var(--fg-tertiary); font-weight: 600;
+  }
+  .snapshot-item .v {
+    font-size: 14px; font-weight: 550; color: var(--fg);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .snapshot-item .v.ok { color: var(--success); }
+  .snapshot-item .v.warn { color: var(--warning); }
+  .snapshot-item .v.bad { color: var(--danger); }
+  .snapshot-item .v.muted { color: var(--fg-tertiary); font-weight: 400; }
+
   /* === Modal === */
   .modal-bg {
     display: none; position: fixed; inset: 0;
@@ -343,9 +381,20 @@
 
   <div id="alert-area"></div>
 
-  <!-- === Hero: Active Key === -->
+  <!-- === 当前生效配置(只读状态快照)=== -->
+  <div class="config-snapshot">
+    <div class="snapshot-head">
+      <span class="snapshot-title">📊 当前生效配置</span>
+      <span class="snapshot-refresh" onclick="loadState()" title="刷新">↻</span>
+    </div>
+    <div class="snapshot-grid" id="snapshot-grid">
+      <div class="empty">加载中...</div>
+    </div>
+  </div>
+
+  <!-- === Hero: Active Key 剩余额度 === -->
   <div class="hero" id="hero">
-    <div class="hero-label">当前 Active Key · 剩余额度</div>
+    <div class="hero-label">Active Key 剩余额度</div>
     <div id="hero-content"><div class="empty">加载中...</div></div>
   </div>
 
@@ -428,6 +477,7 @@ async function loadState() {
       fetch(api('/rotations')).then(r => r.json()),
     ]);
     lastState = stateRes;
+    renderSnapshot(stateRes);
     renderHero(stateRes);
     renderKeys(stateRes);
     renderRotations(rotRes);
@@ -437,6 +487,50 @@ async function loadState() {
   } catch (e) {
     $('sub').textContent = '加载失败: ' + e.message;
   }
+}
+
+// === 当前生效配置快照(只读)===
+function renderSnapshot(s) {
+  const items = [];
+
+  // active key
+  if (s.active_label) {
+    items.push({ k: 'Active Key', v: `#${s.active_idx} ${s.active_label}`, cls: 'ok' });
+  } else {
+    items.push({ k: 'Active Key', v: '无(耗尽或池空)', cls: 'bad' });
+  }
+
+  // 剩余额度
+  const rem = s.active_remaining;
+  if (rem !== null && rem !== undefined) {
+    const cls = rem < s.rotate_threshold ? 'bad' : 'ok';
+    items.push({ k: '剩余额度', v: `${rem} credits`, cls });
+  } else {
+    items.push({ k: '剩余额度', v: '待查询', cls: 'muted' });
+  }
+
+  // 轮询间隔
+  items.push({ k: '轮询间隔', v: `${s.poll_interval_minutes} 分钟` });
+
+  // 轮换阈值
+  items.push({ k: '轮换阈值', v: `${s.rotate_threshold} credits` });
+
+  // key 池大小
+  items.push({ k: 'Key 池', v: `${s.pool_size} 个` });
+
+  // env 推送
+  items.push({ k: 'Env 推送', v: s.env_pushed ? '✓ 已推送' : '✗ 未推送', cls: s.env_pushed ? 'ok' : 'bad' });
+
+  // daemon 运行状态(配合 header 的 pill)
+  items.push({ k: 'Daemon', v: '✓ 运行中', cls: 'ok' });
+
+  const html = items.map(it => `
+    <div class="snapshot-item">
+      <span class="k">${esc(it.k)}</span>
+      <span class="v ${it.cls || ''}">${esc(it.v)}</span>
+    </div>
+  `).join('');
+  $('snapshot-grid').innerHTML = html;
 }
 
 // === Hero ===
@@ -454,11 +548,8 @@ function renderHero(s) {
   $('hero-content').innerHTML = `
     <div class="hero-num ${isWarn ? 'warn' : ''}">${remText}<span class="unit">credits 剩余</span></div>
     <div class="hero-bar ${isWarn ? 'warn' : ''}"><div style="width:${pct}%"></div></div>
-    <div class="hero-meta">
-      <span class="chip">key[${s.active_idx}] · ${esc(s.active_label)}</span>
-      <span class="chip ${s.env_pushed ? 'ok' : ''}">${s.env_pushed ? '✓' : '✗'} env 已推送</span>
-      ${isWarn ? `<span class="chip" style="color:var(--danger)">⚠ 剩余 < ${threshold},即将轮换</span>` : ''}
-    </div>`;
+    ${isWarn ? `<div class="hero-meta"><span class="chip" style="color:var(--danger);background:var(--danger-bg);">⚠ 剩余 < ${threshold},即将轮换</span></div>` : ''}
+  `;
 }
 
 // === Key 表 ===
