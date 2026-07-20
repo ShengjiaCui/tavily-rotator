@@ -1,4 +1,4 @@
-//! launchctl setenv 推送机制(ADR-0018 §8)。
+//! launchctl setenv 推送机制。
 //!
 //! daemon 决定 active key 后,通过 launchctl setenv 把它推到系统环境。
 //! 推到两个域:GUI 域(新开 Terminal 拿到)和当前用户会话域。

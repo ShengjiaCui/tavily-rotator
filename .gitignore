@@ -1,2 +1,13 @@
+# Rust
 /target
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# gstack skill 缓存(开发时生成)
 .gstack/

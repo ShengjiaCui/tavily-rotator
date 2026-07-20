@@ -1,4 +1,4 @@
-//! SQLite 持久化层(ADR-0018 §5.2)。
+//! SQLite 持久化层。
 //!
 //! 三张表:
 //! - usage_snapshots:每次 /usage 查询结果(画用量曲线用)

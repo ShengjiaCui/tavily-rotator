@@ -1,6 +1,7 @@
-//! tavily-rotator daemon — Tavily API key 轮换守护进程(ADR-0018)。
+//! tavily-rotator daemon — Tavily API key 轮换守护进程。
 //!
-//! 设计文档: opdev/docs/designs/2026-07-20-tavily-key-rotator.md
+//! 在多个 Tavily 免费 API key 之间顺序轮换,通过 launchctl setenv 推送
+//! 当前 active key 到系统环境。配 Web 面板(127.0.0.1:8731)管 key 和看用量。
 //!
 //! Phase 1 范围:读 keys.toml → 启动时 launchctl setenv 推 active key
 //!              → 启动最小 HTTP 服务(/api/active, /api/state, /health)。
@@ -95,7 +96,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Err(e) => {
             tracing::error!("加载配置失败: {e}");
-            tracing::error!("请创建 {} (示例见 ADR-0018)", config_path.display());
+            tracing::error!("请创建 {} (格式见 README)", config_path.display());
             std::process::exit(1);
         }
     };

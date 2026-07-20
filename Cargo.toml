@@ -2,7 +2,7 @@
 name = "tavily-rotator"
 version = "0.1.0"
 edition = "2021"
-description = "Tavily API key rotation daemon for opdev (ADR-0018)"
+description = "Tavily API key rotation daemon for macOS"
 license = "MIT"
 
 [dependencies]

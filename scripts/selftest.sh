@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
-# tavily-rotator selftest(ADR-0018)
+# tavily-rotator selftest
 #
-# 装完 install.sh 后跑这个脚本,逐项核验。
-# 参照 opdev .selftest.sh 模式:PASS/FAIL 计数,非零退出。
+# 装完 install.sh 后跑这个脚本,逐项核验。PASS/FAIL 计数,非零退出。
 #
 # 用法: ./scripts/selftest.sh
 
 set -u
 
-LABEL="com.opdev.tavily-rotator"
+LABEL="com.tavily-rotator"
 BIN_PATH="$HOME/.local/bin/tavily-rotator"
 PLIST_PATH="$HOME/Library/LaunchAgents/${LABEL}.plist"
 KEYS_TOML="$HOME/.config/tavily-rotator/keys.toml"
 STATE_DB="$HOME/.local/share/tavily-rotator/state.db"
-LOG_PATH="$HOME/opdev/runlog/tavily-rotator.log"
+LOG_PATH="$HOME/.local/share/tavily-rotator/daemon.log"
 PORT="8731"
 
 failures=0
