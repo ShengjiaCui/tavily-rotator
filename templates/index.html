@@ -54,6 +54,19 @@
   .keyid { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); }
   .note { font-size: 12px; color: var(--muted); max-width: 180px; }
   .usage-cell { font-family: ui-monospace, monospace; font-size: 12px; white-space: nowrap; }
+  /* 轮询预设按钮组 */
+  .preset-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .preset-btn {
+    padding: 6px 14px; border: 1px solid var(--border); border-radius: 16px;
+    background: var(--card); color: var(--muted); font-size: 13px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .preset-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .preset-btn.active {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+    font-weight: 600;
+  }
+  .preset-btn .preset-label { font-size: 10px; display: block; opacity: 0.8; margin-top: 1px; }
   .btn {
     display: inline-block; padding: 5px 12px; border: 1px solid var(--border);
     border-radius: 4px; background: var(--card); color: var(--fg);
@@ -111,6 +124,26 @@
   <div class="card">
     <div class="card-title">当前 active key</div>
     <div id="active-area"><div class="empty">加载中...</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      轮询设置
+      <span id="poll-current" style="font-weight:normal;color:var(--muted);font-size:12px;text-transform:none;">加载中...</span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+      daemon 每隔这么久查一次 active key 的 /usage。改了立即生效(下个周期用新值)。
+    </div>
+    <div class="preset-group" id="poll-presets">
+      <!-- 预设档位按钮,JS 动态渲染高亮 -->
+    </div>
+    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:var(--muted);">自定义:</span>
+      <input type="number" id="poll-custom" min="1" max="1440" placeholder="1-1440"
+             style="width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--fg);font-size:13px;">
+      <span style="font-size:12px;color:var(--muted);">分钟</span>
+      <button class="btn sm primary" onclick="setPollCustom()">应用</button>
+    </div>
   </div>
 
   <div class="card">
@@ -245,6 +278,64 @@ function renderState(s) {
       <thead><tr><th>#</th><th>label</th><th>key</th><th>状态</th><th>本月用量</th><th>备注</th><th>操作</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+
+  // 轮询设置卡片
+  renderPollSettings(s.poll_interval_minutes);
+}
+
+// 轮询预设档位(分钟 + 适用场景说明)
+const POLL_PRESETS = [
+  { mins: 5,  label: '重度', desc: '连续 extract/research' },
+  { mins: 10, label: '频繁', desc: '每天上百次调用' },
+  { mins: 15, label: '适中', desc: '日常使用' },
+  { mins: 30, label: '常规', desc: '默认值' },
+  { mins: 60, label: '悠闲', desc: '偶尔搜索' },
+];
+
+function renderPollSettings(currentMins) {
+  // 当前值提示
+  $('poll-current').textContent = `当前:每 ${currentMins} 分钟`;
+  // 自定义输入框预填当前值
+  $('poll-custom').value = currentMins;
+  // 预设按钮组
+  let html = POLL_PRESETS.map(p => {
+    const isActive = p.mins === currentMins;
+    return `<button class="preset-btn ${isActive ? 'active' : ''}"
+              onclick="setPoll(${p.mins})"
+              title="${p.desc}">
+              ${p.mins} 分钟
+              <span class="preset-label">${p.label}</span>
+            </button>`;
+  }).join('');
+  $('poll-presets').innerHTML = html;
+}
+
+async function setPoll(mins) {
+  try {
+    const res = await fetch(api('/config'), {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({poll_interval_minutes: mins})
+    });
+    const d = await res.json();
+    if (d.ok) {
+      showAlert(`✓ 轮询间隔已设为 ${mins} 分钟(下个周期生效)`, 'ok');
+      loadState();
+    } else {
+      showAlert(`✗ 设置失败: ${d.error || ''}`, '');
+    }
+  } catch (e) {
+    showAlert('✗ 请求失败: ' + e.message, '');
+  }
+}
+
+async function setPollCustom() {
+  const val = parseInt($('poll-custom').value, 10);
+  if (isNaN(val) || val < 1 || val > 1440) {
+    showAlert('✗ 请输入 1-1440 之间的数字', '');
+    return;
+  }
+  await setPoll(val);
 }
 
 function renderRotations(rots) {

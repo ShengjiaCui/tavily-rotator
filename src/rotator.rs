@@ -11,26 +11,35 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::time::{interval_at, Instant};
+use tokio::time::sleep;
 
 use crate::tavily;
 use crate::AppState;
 
-/// 轮询间隔:30 分钟。
-/// 太快费请求(虽然 /usage 免费),太慢反应迟。设计文档 §10.3。
-const POLL_INTERVAL: Duration = Duration::from_secs(30 * 60);
-
 /// 提前轮换阈值:剩余 <50 credits 时主动切,给长寿进程留缓冲(§8.3)。
 const EARLY_ROTATE_THRESHOLD: u32 = 50;
 
-/// 启动轮换循环。阻塞当前 task,通常 spawn 到独立 task。
-pub async fn run(state: Arc<AppState>) {
-    let mut ticker = interval_at(Instant::now(), POLL_INTERVAL);
+/// 从 config 读 poll_interval_minutes(运行时可改,改了下个 tick 生效)。
+async fn current_poll_interval(state: &Arc<AppState>) -> Duration {
+    let cfg = state.config.read().await;
+    let mins = if cfg.poll_interval_minutes >= 1 && cfg.poll_interval_minutes <= 1440 {
+        cfg.poll_interval_minutes
+    } else {
+        30
+    };
+    Duration::from_secs((mins as u64) * 60)
+}
 
-    tracing::info!("轮换循环启动,每 {} 秒查一次 /usage", POLL_INTERVAL.as_secs());
+/// 启动轮换循环。阻塞当前 task,通常 spawn 到独立 task。
+/// 每 tick 重新读 config 的 poll_interval_minutes,改了间隔下个 tick 生效。
+pub async fn run(state: Arc<AppState>) {
+    tracing::info!("轮换循环启动");
 
     loop {
-        ticker.tick().await;
+        // 当前 tick:先 sleep(首次启动立即跑,不 sleep)
+        let interval = current_poll_interval(&state).await;
+        tracing::debug!("下次查询在 {} 分钟后", interval.as_secs() / 60);
+        sleep(interval).await;
 
         if let Err(e) = poll_once(&state).await {
             tracing::error!("轮询周期出错(非致命,下个周期重试): {e:#}");

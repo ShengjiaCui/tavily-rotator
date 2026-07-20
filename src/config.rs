@@ -15,6 +15,11 @@ pub struct Config {
     #[serde(default = "default_threshold")]
     pub rotate_threshold: u32,
 
+    /// 轮询间隔(分钟)。daemon 每隔这么久查一次 active key 的 /usage。
+    /// 默认 30。允许 1-1440(1 分钟到 24 小时)。
+    #[serde(default = "default_poll_interval")]
+    pub poll_interval_minutes: u32,
+
     /// key 池,顺序即轮换顺序。可为任意长度(0 也允许,daemon 会报 pool_empty)。
     #[serde(default)]
     pub keys: Vec<Key>,
@@ -22,6 +27,10 @@ pub struct Config {
 
 fn default_threshold() -> u32 {
     20
+}
+
+fn default_poll_interval() -> u32 {
+    30
 }
 
 /// 单个 key 条目。
@@ -46,8 +55,16 @@ impl Config {
         Ok(cfg)
     }
 
-    /// 校验:label 非空且唯一,note ≤100 字符,secret 非空。
+    /// 校验:label 非空且唯一,note ≤100 字符,secret 非空,poll_interval 范围。
     fn validate(&self) -> Result<(), ConfigError> {
+        // poll_interval_minutes 范围校验(1-1440 分钟)
+        if self.poll_interval_minutes < 1 || self.poll_interval_minutes > 1440 {
+            return Err(ConfigError::Invalid(format!(
+                "poll_interval_minutes 必须在 1-1440 之间(实际 {})",
+                self.poll_interval_minutes
+            )));
+        }
+
         let mut seen_labels = std::collections::HashSet::new();
         for (i, k) in self.keys.iter().enumerate() {
             if k.label.trim().is_empty() {

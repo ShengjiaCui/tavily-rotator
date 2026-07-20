@@ -37,6 +37,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/keys/refresh-all", post(refresh_all))
         .route("/api/rotate", post(rotate_now))
         .route("/api/activate/{idx}", post(activate_key))
+        .route("/api/config", axum::routing::put(update_config))
         .route("/api/rotations", get(get_rotations))
         .route("/api/environment", get(get_environment))
         .route("/api/install", post(install))
@@ -63,6 +64,7 @@ struct StateResponse {
     pool_size: usize,
     pool_remaining: u32,
     rotate_threshold: u32,
+    poll_interval_minutes: u32,
     env_pushed: bool,
     keys: Vec<KeyView>,
 }
@@ -87,6 +89,7 @@ async fn api_state(State(state): State<Arc<AppState>>) -> Json<StateResponse> {
         pool_size: cfg.keys.len(),
         pool_remaining: 0, // Phase 3 后续算(需要查所有 key,refresh-all 时更新)
         rotate_threshold: cfg.rotate_threshold,
+        poll_interval_minutes: cfg.poll_interval_minutes,
         env_pushed: state.env_pushed.load(std::sync::atomic::Ordering::Relaxed),
         keys: cfg
             .keys
@@ -531,6 +534,63 @@ async fn activate_key(
         )
             .into_response(),
     }
+}
+
+// ===================================================================
+// /api/config PUT — 改全局配置(目前支持 poll_interval_minutes)
+// ===================================================================
+
+#[derive(Deserialize)]
+struct UpdateConfigRequest {
+    poll_interval_minutes: Option<u32>,
+    rotate_threshold: Option<u32>,
+}
+
+async fn update_config(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<UpdateConfigRequest>,
+) -> impl IntoResponse {
+    let mut cfg = state.config.read().await.clone();
+    let mut changed = Vec::new();
+
+    if let Some(mins) = req.poll_interval_minutes {
+        if !(1..=1440).contains(&mins) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "ok": false, "error": "poll_interval_out_of_range",
+                    "min": 1, "max": 1440, "actual": mins
+                })),
+            )
+                .into_response();
+        }
+        cfg.poll_interval_minutes = mins;
+        changed.push(format!("poll_interval_minutes={mins}"));
+    }
+
+    if let Some(threshold) = req.rotate_threshold {
+        cfg.rotate_threshold = threshold;
+        changed.push(format!("rotate_threshold={threshold}"));
+    }
+
+    if changed.is_empty() {
+        return Json(serde_json::json!({"ok": true, "changed": false})).into_response();
+    }
+
+    // 原子写 keys.toml
+    if let Err(e) = cfg.save_atomic(&crate::config::default_config_path()) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"ok": false, "error": "save_failed", "detail": e.to_string()})),
+        )
+            .into_response();
+    }
+
+    // 更新内存状态
+    *state.config.write().await = cfg;
+
+    tracing::info!("配置更新: {}", changed.join(", "));
+    Json(serde_json::json!({"ok": true, "changed": true, "fields": changed})).into_response()
 }
 
 // ===================================================================
