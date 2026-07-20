@@ -11,6 +11,7 @@ mod api;
 mod config;
 mod db;
 mod env_push;
+mod install;
 mod rotator;
 mod tavily;
 

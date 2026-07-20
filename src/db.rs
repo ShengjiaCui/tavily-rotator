@@ -218,4 +218,21 @@ impl Db {
         conn.execute("DELETE FROM install_events WHERE ts < ?1", params![cutoff])?;
         Ok(())
     }
+
+    /// 写一条安装事件记录。
+    pub async fn insert_install_event(
+        &self,
+        now: u64,
+        component: &str,
+        success: bool,
+        log_excerpt: &str,
+    ) -> anyhow::Result<()> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO install_events (ts, component, success, log_excerpt)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![now as i64, component, if success { 1 } else { 0 }, log_excerpt],
+        )?;
+        Ok(())
+    }
 }

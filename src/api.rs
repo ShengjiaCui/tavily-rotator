@@ -37,6 +37,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/keys/refresh-all", post(refresh_all))
         .route("/api/rotate", post(rotate_now))
         .route("/api/rotations", get(get_rotations))
+        .route("/api/environment", get(get_environment))
+        .route("/api/install", post(install))
         .with_state(state)
 }
 
@@ -516,6 +518,75 @@ async fn get_rotations(State(state): State<Arc<AppState>>) -> impl IntoResponse 
         )
             .into_response(),
     }
+}
+
+// ===================================================================
+// /api/environment GET — 环境探测
+// ===================================================================
+
+async fn get_environment(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let mut env = crate::install::detect().await;
+    let cfg = state.config.read().await;
+    env.pool_size = cfg.keys.len();
+    Json(env)
+}
+
+// ===================================================================
+// /api/install POST — 一键安装(命令硬编码,绝不 tvly login)
+// ===================================================================
+
+#[derive(Deserialize)]
+struct InstallRequest {
+    components: Vec<String>,
+}
+
+async fn install(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<InstallRequest>,
+) -> impl IntoResponse {
+    let cmds = crate::install::install_commands(&req.components);
+    if cmds.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"ok": false, "error": "no_valid_components"})),
+        )
+            .into_response();
+    }
+
+    let mut results = Vec::new();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    for (name, cmd) in &cmds {
+        tracing::info!("安装 {} : {:?}", name, cmd);
+        let (success, log) = crate::install::run_install_command(cmd);
+
+        // 截取最后 2000 字符存审计(防 log 过大)
+        let excerpt = if log.len() > 2000 {
+            format!("...(truncated)\n{}", &log[log.len() - 2000..])
+        } else {
+            log.clone()
+        };
+
+        // 落 install_events 表
+        let _ = state.db.insert_install_event(now, name, success, &excerpt).await;
+
+        results.push(serde_json::json!({
+            "component": name,
+            "success": success,
+            "log_tail": excerpt.lines().last().unwrap_or(""),
+        }));
+
+        tracing::info!(
+            "安装 {} {}",
+            name,
+            if success { "✓ 成功" } else { "✗ 失败" }
+        );
+    }
+
+    Json(serde_json::json!({"ok": true, "results": results})).into_response()
 }
 
 // ===================================================================
