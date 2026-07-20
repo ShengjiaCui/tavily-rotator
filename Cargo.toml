@@ -1,0 +1,45 @@
+[package]
+name = "tavily-rotator"
+version = "0.1.0"
+edition = "2021"
+description = "Tavily API key rotation daemon for opdev (ADR-0018)"
+license = "MIT"
+
+[dependencies]
+# HTTP 服务 + 客户端
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
+
+# 序列化 + 配置
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# 存储
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# 文件监听
+notify = "7"
+
+# 模板(Web UI,编译期)
+askama = "0.12"
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# 错误处理
+thiserror = "2"
+anyhow = "1"
+
+# libc(fsync / chmod / getuid)
+libc = "0.2"
+
+[profile.release]
+# daemon 长期跑,优化体积 + 去符号
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
