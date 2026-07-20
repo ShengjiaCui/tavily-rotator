@@ -5,194 +5,421 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tavily Rotator</title>
 <style>
+  /* === 设计 token === */
   :root {
-    --bg: #fafafa; --card: #fff; --fg: #1a1a1a; --muted: #666; --faint: #999;
-    --border: #e1e4e8; --accent: #0969da; --accent-bg: #ddf4ff;
-    --warn: #d1242f; --warn-bg: #ffebe9; --ok: #1a7f37; --ok-bg: #dafbe1;
-    --code-bg: #f6f8fa;
+    --bg: #f6f8fa;
+    --surface: #ffffff;
+    --surface-2: #f0f3f6;
+    --fg: #1f2328;
+    --fg-secondary: #656d76;
+    --fg-tertiary: #8c959f;
+    --border: #d0d7de;
+    --border-subtle: #e8ecf0;
+    --accent: #0969da;
+    --accent-hover: #0860c0;
+    --accent-bg: #ddf4ff;
+    --success: #1a7f37;
+    --success-bg: #dafbe1;
+    --warning: #9a6700;
+    --warning-bg: #fff8c5;
+    --danger: #cf222e;
+    --danger-bg: #ffebe9;
+    --shadow-sm: 0 1px 0 rgba(31,35,40,0.04);
+    --shadow-md: 0 3px 6px rgba(140,149,159,0.15);
+    --radius: 10px;
+    --radius-sm: 6px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0d1117; --card: #161b22; --fg: #e6edf3; --muted: #9198a1; --faint: #6e7681;
-      --border: #30363d; --accent: #58a6ff; --accent-bg: #0d2d5a;
-      --warn: #f85149; --warn-bg: #4a1e1e; --ok: #3fb950; --ok-bg: #1a3a1f;
-      --code-bg: #161b22;
+      --bg: #010409;
+      --surface: #0d1117;
+      --surface-2: #161b22;
+      --fg: #e6edf3;
+      --fg-secondary: #9198a1;
+      --fg-tertiary: #6e7681;
+      --border: #30363d;
+      --border-subtle: #21262d;
+      --accent: #2f81f7;
+      --accent-hover: #4493f8;
+      --accent-bg: #0d2d5a;
+      --success: #3fb950;
+      --success-bg: #1a3a1f;
+      --warning: #d29922;
+      --warning-bg: #3d2e00;
+      --danger: #f85149;
+      --danger-bg: #4a1e1e;
+      --shadow-sm: 0 1px 0 rgba(0,0,0,0.3);
+      --shadow-md: 0 3px 6px rgba(0,0,0,0.4);
     }
   }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 24px;
-    background: var(--bg); color: var(--fg);
-    font-family: -apple-system, "PingFang SC", "Segoe UI", sans-serif;
-    font-size: 14px; line-height: 1.6;
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Helvetica Neue", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-  .wrap { max-width: 900px; margin: 0 auto; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: var(--muted); font-size: 12px; margin-bottom: 20px; }
-  .card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 6px; padding: 16px; margin-bottom: 16px;
+
+  /* === 布局 === */
+  .wrap { max-width: 880px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  /* === Header === */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 32px; padding-bottom: 24px;
+    border-bottom: 1px solid var(--border-subtle);
   }
-  .card-title {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
-    color: var(--faint); margin-bottom: 12px;
-    display: flex; justify-content: space-between; align-items: center;
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 36px; height: 36px; border-radius: 9px;
+    background: linear-gradient(135deg, var(--accent), #6c4ed9);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 16px;
+    box-shadow: var(--shadow-md);
   }
-  .state-row { display: flex; align-items: center; gap: 16px; }
-  .big-num { font-size: 28px; font-weight: 600; line-height: 1; }
-  .big-num .unit { font-size: 13px; color: var(--muted); font-weight: 400; }
-  .progress { flex: 1; height: 8px; background: var(--code-bg); border-radius: 4px; overflow: hidden; }
-  .progress > div { height: 100%; background: var(--ok); transition: width 0.3s; }
-  .progress.warn > div { background: var(--warn); }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
-  th { color: var(--faint); font-weight: 500; font-size: 11px; text-transform: uppercase; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
-  .badge.active { background: var(--ok-bg); color: var(--ok); }
-  .badge.retired { background: var(--warn-bg); color: var(--warn); }
-  .badge.standby { background: var(--code-bg); color: var(--muted); }
-  .keyid { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); }
-  .note { font-size: 12px; color: var(--muted); max-width: 180px; }
-  .usage-cell { font-family: ui-monospace, monospace; font-size: 12px; white-space: nowrap; }
-  /* 轮询预设按钮组 */
-  .preset-group { display: flex; gap: 6px; flex-wrap: wrap; }
-  .preset-btn {
-    padding: 6px 14px; border: 1px solid var(--border); border-radius: 16px;
-    background: var(--card); color: var(--muted); font-size: 13px; cursor: pointer;
-    transition: all 0.15s;
+  .header h1 { font-size: 18px; font-weight: 650; letter-spacing: -0.2px; }
+  .header-sub { font-size: 12px; color: var(--fg-tertiary); margin-top: 1px; }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 20px;
+    background: var(--success-bg); color: var(--success);
+    font-size: 12px; font-weight: 500;
+    border: 1px solid transparent;
   }
-  .preset-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .preset-btn.active {
-    background: var(--accent); color: #fff; border-color: var(--accent);
-    font-weight: 600;
+  .status-pill.warn { background: var(--warning-bg); color: var(--warning); }
+  .status-pill .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+    animation: pulse 2s infinite;
   }
-  .preset-btn .preset-label { font-size: 10px; display: block; opacity: 0.8; margin-top: 1px; }
-  .btn {
-    display: inline-block; padding: 5px 12px; border: 1px solid var(--border);
-    border-radius: 4px; background: var(--card); color: var(--fg);
-    font-size: 12px; cursor: pointer; margin-left: 4px;
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
   }
-  .btn:hover { border-color: var(--accent); }
-  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .btn.danger { color: var(--warn); border-color: var(--warn); }
-  .btn.sm { padding: 3px 8px; font-size: 11px; }
+
+  /* === Alert === */
   .alert {
-    background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn);
-    padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;
+    padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 16px;
+    font-size: 13px; display: flex; align-items: center; gap: 8px;
+    border: 1px solid;
   }
-  .alert.ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+  .alert.ok { background: var(--success-bg); color: var(--success); border-color: transparent; }
+  .alert.warn { background: var(--warning-bg); color: var(--warning); border-color: transparent; }
+  .alert.err { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
+
+  /* === Hero(Active Key 主英雄区)=== */
+  .hero {
+    background: var(--surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius); padding: 28px 32px; margin-bottom: 16px;
+    box-shadow: var(--shadow-sm);
+    position: relative; overflow: hidden;
+  }
+  .hero::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--accent);
+  }
+  .hero-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--fg-tertiary); font-weight: 600; margin-bottom: 12px;
+  }
+  .hero-num {
+    font-size: 44px; font-weight: 700; line-height: 1; letter-spacing: -1px;
+    color: var(--fg);
+  }
+  .hero-num.warn { color: var(--danger); }
+  .hero-num .unit { font-size: 14px; color: var(--fg-tertiary); font-weight: 400; margin-left: 6px; }
+  .hero-bar {
+    margin-top: 16px; height: 6px; background: var(--surface-2);
+    border-radius: 3px; overflow: hidden;
+  }
+  .hero-bar > div {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--success), #2ea44f);
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .hero-bar.warn > div { background: linear-gradient(90deg, var(--danger), #a40e26); }
+  .hero-meta {
+    margin-top: 14px; font-size: 13px; color: var(--fg-secondary);
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .hero-meta .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; background: var(--surface-2); border-radius: 20px;
+    font-size: 12px; color: var(--fg-secondary);
+  }
+  .hero-meta .chip.ok { color: var(--success); }
+
+  /* === Card === */
+  .card {
+    background: var(--surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius); padding: 20px 24px; margin-bottom: 16px;
+    box-shadow: var(--shadow-sm);
+  }
+  .card-head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px;
+  }
+  .card-title { font-size: 14px; font-weight: 600; color: var(--fg); }
+  .card-sub { font-size: 12px; color: var(--fg-tertiary); margin-top: 2px; }
+
+  /* === 按钮 === */
+  .btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 12px; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); background: var(--surface);
+    color: var(--fg-secondary); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.12s;
+    font-family: inherit; line-height: 1;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+  .btn.primary {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+  .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+  .btn.danger { color: var(--danger); border-color: var(--border); }
+  .btn.danger:hover { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+  .btn.ghost { border-color: transparent; background: transparent; }
+  .btn.ghost:hover { background: var(--surface-2); }
+  .btn.sm { padding: 4px 10px; font-size: 12px; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn:disabled:hover { border-color: var(--border); color: var(--fg-secondary); background: var(--surface); }
+
+  .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* === 表格 === */
+  .table-wrap { overflow-x: auto; margin: 0 -8px; padding: 0 8px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left; padding: 8px 10px; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--fg-tertiary); font-weight: 600;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  tbody td { padding: 12px 10px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { transition: background 0.1s; }
+  tbody tr:hover { background: var(--surface-2); }
+
+  .key-label { font-weight: 550; color: var(--fg); }
+  .key-secret {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px;
+    color: var(--fg-tertiary); background: var(--surface-2);
+    padding: 2px 6px; border-radius: 4px;
+  }
+  .key-note { font-size: 12px; color: var(--fg-secondary); max-width: 160px; }
+
+  /* 状态圆点(替代文字 badge) */
+  .status-dot {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--fg-secondary);
+  }
+  .status-dot::before {
+    content: ''; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--fg-tertiary);
+  }
+  .status-dot.active::before { background: var(--success); box-shadow: 0 0 0 3px var(--success-bg); }
+  .status-dot.active { color: var(--success); font-weight: 550; }
+
+  /* 用量迷你进度条 */
+  .usage { display: flex; align-items: center; gap: 8px; min-width: 140px; }
+  .usage-num { font-family: ui-monospace, monospace; font-size: 12px; font-weight: 600; min-width: 32px; }
+  .usage-num.warn { color: var(--danger); }
+  .usage-bar {
+    flex: 1; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;
+    min-width: 50px;
+  }
+  .usage-bar > div { height: 100%; border-radius: 2px; transition: width 0.4s; }
+  .usage-bar > div.ok { background: var(--success); }
+  .usage-bar > div.warn { background: var(--warning); }
+  .usage-bar > div.bad { background: var(--danger); }
+  .usage-detail { font-size: 10px; color: var(--fg-tertiary); font-family: ui-monospace, monospace; }
+
+  /* === 轮询设置 segmented control === */
+  .segmented {
+    display: inline-flex; background: var(--surface-2);
+    border-radius: var(--radius-sm); padding: 3px; gap: 2px;
+    border: 1px solid var(--border-subtle);
+  }
+  .segmented button {
+    padding: 7px 16px; border: none; background: transparent;
+    color: var(--fg-secondary); font-size: 13px; font-weight: 500;
+    border-radius: 4px; cursor: pointer; transition: all 0.12s;
+    font-family: inherit; line-height: 1; text-align: center;
+  }
+  .segmented button:hover:not(.active) { color: var(--fg); }
+  .segmented button.active {
+    background: var(--surface); color: var(--accent); font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  }
+  .segmented button .seg-sub {
+    display: block; font-size: 10px; opacity: 0.7; margin-top: 2px; font-weight: 400;
+  }
+  .custom-input {
+    display: flex; align-items: center; gap: 8px; margin-top: 14px;
+    font-size: 12px; color: var(--fg-secondary);
+  }
+  .custom-input input {
+    width: 70px; padding: 5px 8px; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); background: var(--surface);
+    color: var(--fg); font-size: 13px; font-family: inherit;
+  }
+  .custom-input input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+
+  /* === 切换历史时间线 === */
+  .timeline { list-style: none; }
+  .timeline li {
+    padding: 10px 0; border-bottom: 1px solid var(--border-subtle);
+    font-size: 13px; display: flex; gap: 12px; align-items: baseline;
+  }
+  .timeline li:last-child { border-bottom: none; }
+  .timeline .ts { color: var(--fg-tertiary); font-size: 11px; min-width: 140px; font-family: ui-monospace, monospace; }
+  .timeline .arrow { color: var(--fg-tertiary); }
+  .timeline .reason {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    font-size: 10px; background: var(--surface-2); color: var(--fg-secondary);
+    margin-left: 4px;
+  }
+
+  .empty { color: var(--fg-tertiary); font-style: italic; text-align: center; padding: 24px; font-size: 13px; }
+
+  /* === Modal === */
   .modal-bg {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(2px);
     z-index: 100; align-items: center; justify-content: center;
   }
   .modal-bg.show { display: flex; }
   .modal {
-    background: var(--card); border-radius: 8px; padding: 24px;
-    width: 90%; max-width: 460px; border: 1px solid var(--border);
+    background: var(--surface); border-radius: var(--radius);
+    padding: 28px; width: 90%; max-width: 440px;
+    border: 1px solid var(--border); box-shadow: var(--shadow-md);
   }
-  .modal h2 { font-size: 16px; margin: 0 0 16px; }
-  .form-row { margin-bottom: 12px; }
-  .form-row label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .modal h2 { font-size: 17px; margin-bottom: 20px; font-weight: 600; }
+  .form-row { margin-bottom: 16px; }
+  .form-row label { display: block; font-size: 12px; color: var(--fg-secondary); margin-bottom: 6px; font-weight: 500; }
   .form-row input, .form-row textarea {
-    width: 100%; padding: 6px 8px; border: 1px solid var(--border);
-    border-radius: 4px; font-size: 13px; background: var(--bg); color: var(--fg);
-    font-family: inherit;
+    width: 100%; padding: 8px 12px; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); font-size: 13px;
+    background: var(--surface); color: var(--fg); font-family: inherit;
   }
-  .form-row textarea { resize: vertical; min-height: 50px; }
-  .char-count { text-align: right; font-size: 11px; color: var(--faint); }
-  .timeline { list-style: none; padding: 0; margin: 0; }
-  .timeline li { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
-  .timeline .ts { color: var(--faint); font-size: 11px; width: 150px; display: inline-block; }
-  .empty { color: var(--faint); font-style: italic; text-align: center; padding: 20px; }
-  .kv { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
-  .kv .k { color: var(--muted); }
-  .kv .v { font-family: ui-monospace, monospace; }
-  .kv .v.ok { color: var(--ok); }
-  .kv .v.bad { color: var(--warn); }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-  .dot.ok { background: var(--ok); }
-  .dot.bad { background: var(--warn); }
+  .form-row input:focus, .form-row textarea:focus {
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg);
+  }
+  .form-row textarea { resize: vertical; min-height: 56px; }
+  .char-count { text-align: right; font-size: 11px; color: var(--fg-tertiary); margin-top: 4px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+  .form-error { color: var(--danger); font-size: 12px; margin-top: 8px; min-height: 16px; }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 20px 16px 60px; }
+    .hero { padding: 20px; }
+    .hero-num { font-size: 36px; }
+    .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .segmented { width: 100%; justify-content: space-between; }
+    .segmented button { flex: 1; padding: 7px 4px; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Tavily Rotator</h1>
-  <div class="sub" id="sub">127.0.0.1:8731 · 加载中...</div>
+
+  <!-- === Header === -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">T</div>
+      <div>
+        <h1>Tavily Rotator</h1>
+        <div class="header-sub" id="sub">加载中...</div>
+      </div>
+    </div>
+    <div id="status-pill" class="status-pill">
+      <span class="dot"></span>
+      <span id="status-text">运行中</span>
+    </div>
+  </div>
 
   <div id="alert-area"></div>
 
-  <div class="card">
-    <div class="card-title">当前 active key</div>
-    <div id="active-area"><div class="empty">加载中...</div></div>
+  <!-- === Hero: Active Key === -->
+  <div class="hero" id="hero">
+    <div class="hero-label">当前 Active Key · 剩余额度</div>
+    <div id="hero-content"><div class="empty">加载中...</div></div>
   </div>
 
+  <!-- === 轮询设置 === -->
   <div class="card">
-    <div class="card-title">
-      轮询设置
-      <span id="poll-current" style="font-weight:normal;color:var(--muted);font-size:12px;text-transform:none;">加载中...</span>
+    <div class="card-head">
+      <div>
+        <div class="card-title">轮询间隔</div>
+        <div class="card-sub">daemon 每隔这么久查一次 active key 的 /usage,改了下个周期生效</div>
+      </div>
     </div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
-      daemon 每隔这么久查一次 active key 的 /usage。改了立即生效(下个周期用新值)。
-    </div>
-    <div class="preset-group" id="poll-presets">
-      <!-- 预设档位按钮,JS 动态渲染高亮 -->
-    </div>
-    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <span style="font-size:12px;color:var(--muted);">自定义:</span>
-      <input type="number" id="poll-custom" min="1" max="1440" placeholder="1-1440"
-             style="width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--fg);font-size:13px;">
-      <span style="font-size:12px;color:var(--muted);">分钟</span>
+    <div class="segmented" id="poll-presets"></div>
+    <div class="custom-input">
+      <span>自定义</span>
+      <input type="number" id="poll-custom" min="1" max="1440" placeholder="1-1440">
+      <span>分钟</span>
       <button class="btn sm primary" onclick="setPollCustom()">应用</button>
     </div>
   </div>
 
+  <!-- === Key 池 === -->
   <div class="card">
-    <div class="card-title">
-      Key 池
-      <span>
+    <div class="card-head">
+      <div>
+        <div class="card-title">Key 池</div>
+        <div class="card-sub" id="pool-sub">— 个 key</div>
+      </div>
+      <div class="btn-group">
         <button class="btn sm" onclick="refreshAll()">🔍 查询全部用量</button>
-        <button class="btn sm primary" onclick="showAddModal()">+ 添加 key</button>
-      </span>
+        <button class="btn sm primary" onclick="showAddModal()">+ 添加</button>
+      </div>
     </div>
     <div id="keys-area"><div class="empty">加载中...</div></div>
   </div>
 
+  <!-- === 切换历史 === -->
   <div class="card">
-    <div class="card-title">切换历史(最近 20 条)</div>
+    <div class="card-head">
+      <div class="card-title">切换历史</div>
+    </div>
     <div id="rotations-area"><div class="empty">加载中...</div></div>
   </div>
 </div>
 
-<!-- 添加 key 模态框 -->
+<!-- === Add Key Modal === -->
 <div class="modal-bg" id="add-modal">
   <div class="modal">
     <h2>添加新 key</h2>
     <div class="form-row">
-      <label>API key <span style="color:var(--warn)">*</span></label>
+      <label>API key <span style="color:var(--danger)">*</span></label>
       <input type="text" id="add-secret" placeholder="tvly-dev-xxxxxxxxxxxxxxxxxxxxxxxxx">
     </div>
     <div class="form-row">
-      <label>label <span style="color:var(--faint)">(简短标识)</span></label>
+      <label>label <span style="color:var(--fg-tertiary)">(简短标识)</span></label>
       <input type="text" id="add-label" placeholder="如:work-main / backup-3">
     </div>
     <div class="form-row">
-      <label>备注 note <span style="color:var(--faint)">(≤100 字符)</span></label>
+      <label>备注 <span style="color:var(--fg-tertiary)">(≤100 字符)</span></label>
       <textarea id="add-note" placeholder="如:张三 7 月注册的号"></textarea>
       <div class="char-count"><span id="note-count">0</span> / 100</div>
     </div>
-    <div style="margin-top:16px;">
-      <button class="btn primary" onclick="submitAdd()">添加</button>
+    <div class="form-error" id="add-error"></div>
+    <div class="modal-actions">
       <button class="btn" onclick="hideAddModal()">取消</button>
+      <button class="btn primary" onclick="submitAdd()">添加</button>
     </div>
-    <div id="add-error" style="color:var(--warn);font-size:12px;margin-top:8px;"></div>
   </div>
 </div>
 
 <script>
 const api = (path) => '/api' + path;
 const $ = (id) => document.getElementById(id);
-let usageData = {};  // 查询全部后存这里,idx → {remaining, plan_usage, plan_limit, error}
-let lastState = null; // 缓存 state,refreshAll 后只重渲染表格
+let usageData = {};
+let lastState = null;
 
 async function loadState() {
   try {
@@ -200,296 +427,257 @@ async function loadState() {
       fetch(api('/state')).then(r => r.json()),
       fetch(api('/rotations')).then(r => r.json()),
     ]);
-    renderState(stateRes);
     lastState = stateRes;
+    renderHero(stateRes);
+    renderKeys(stateRes);
     renderRotations(rotRes);
-    $('sub').textContent = `127.0.0.1:8731 · ${stateRes.pool_size} 个 key · 阈值 ${stateRes.rotate_threshold}`;
+    renderPoll(stateRes.poll_interval_minutes);
+    $('sub').textContent = `${stateRes.pool_size} 个 key · 阈值 ${stateRes.rotate_threshold} credits · ${stateRes.env_pushed ? 'env ✓' : 'env ✗'}`;
+    $('pool-sub').textContent = `${stateRes.pool_size} 个 key · 顺序轮换`;
   } catch (e) {
     $('sub').textContent = '加载失败: ' + e.message;
   }
 }
 
-function renderState(s) {
-  // active 区
-  if (s.active_label) {
-    const remaining = s.active_remaining;
-    const remainingText = remaining !== null && remaining !== undefined
-      ? `${remaining} <span class="unit">credits</span>` : `— <span class="unit">(待查询)</span>`;
-    const pct = remaining ? Math.min(100, Math.round(remaining / 1000 * 100)) : 0;
-    const warnClass = remaining !== null && remaining < s.rotate_threshold ? ' warn' : '';
-    $('active-area').innerHTML = `
-      <div class="state-row">
-        <div class="big-num">${remainingText}</div>
-        <div class="progress${warnClass}"><div style="width:${pct}%"></div></div>
-      </div>
-      <div style="font-size:12px;color:var(--muted);margin-top:8px;">
-        key[${s.active_idx}] · ${s.active_label} · env ${s.env_pushed ? '✓ 已推送' : '✗ 未推送'}
-      </div>`;
-  } else {
-    $('active-area').innerHTML = '<div class="empty">无 active key(池空或全耗尽)</div>';
-  }
-
-  // key 池表
-  if (s.keys.length === 0) {
-    $('keys-area').innerHTML = '<div class="empty">key 池为空,点 "+ 添加 key" 添加</div>';
+// === Hero ===
+function renderHero(s) {
+  if (!s.active_label) {
+    $('hero-content').innerHTML = '<div class="empty">无 active key(池空或全耗尽)</div>';
     return;
   }
-  let rows = s.keys.map(k => {
+  const remaining = s.active_remaining;
+  const threshold = s.rotate_threshold;
+  const isWarn = remaining !== null && remaining < threshold;
+  const remText = remaining !== null && remaining !== undefined ? remaining : '—';
+  const pct = remaining ? Math.min(100, Math.round(remaining / 1000 * 100)) : 0;
+
+  $('hero-content').innerHTML = `
+    <div class="hero-num ${isWarn ? 'warn' : ''}">${remText}<span class="unit">credits 剩余</span></div>
+    <div class="hero-bar ${isWarn ? 'warn' : ''}"><div style="width:${pct}%"></div></div>
+    <div class="hero-meta">
+      <span class="chip">key[${s.active_idx}] · ${esc(s.active_label)}</span>
+      <span class="chip ${s.env_pushed ? 'ok' : ''}">${s.env_pushed ? '✓' : '✗'} env 已推送</span>
+      ${isWarn ? `<span class="chip" style="color:var(--danger)">⚠ 剩余 < ${threshold},即将轮换</span>` : ''}
+    </div>`;
+}
+
+// === Key 表 ===
+function renderKeys(s) {
+  if (s.keys.length === 0) {
+    $('keys-area').innerHTML = '<div class="empty">key 池为空,点"+ 添加"</div>';
+    return;
+  }
+  const rows = s.keys.map(k => {
     const isActive = k.idx === s.active_idx;
-    const badge = isActive ? '<span class="badge active">active</span>'
-      : `<span class="badge standby">#${k.idx}</span>`;
-    // 用量列:从 usageData 取(查询全部后填入),没查过显示 —
+    const statusBadge = `<span class="status-dot ${isActive ? 'active' : ''}">${isActive ? 'active' : '#' + k.idx}</span>`;
+
+    // 用量
     const u = usageData[k.idx];
-    let usageCell;
+    let usageHtml;
     if (u) {
       if (u.error) {
-        // 查询出错(限流/无效 key 等)
-        const shortErr = u.error.includes('429') ? '限流' : (u.error.includes('401') ? '无效' : '错误');
-        usageCell = `<span style="color:var(--warn);">⚠ ${shortErr}</span>`;
+        const e = u.error.includes('429') ? '限流' : (u.error.includes('401') ? '无效' : '错误');
+        usageHtml = `<span style="color:var(--danger);font-size:12px;">⚠ ${e}</span>`;
       } else if (u.remaining !== null && u.remaining !== undefined) {
         const rem = u.remaining;
-        const warnColor = rem < s.rotate_threshold ? 'color:var(--warn);font-weight:600;' : '';
-        const usedText = u.plan_usage !== null ? `${u.plan_usage}/${u.plan_limit}` : '?';
-        usageCell = `<span style="${warnColor}">${rem}</span> <span style="color:var(--faint);font-size:11px;">剩余(${usedText})</span>`;
+        const pct = Math.min(100, Math.round(rem / (u.plan_limit || 1000) * 100));
+        const cls = rem < s.rotate_threshold ? 'bad' : (rem < 50 ? 'warn' : 'ok');
+        const numCls = rem < s.rotate_threshold ? 'warn' : '';
+        usageHtml = `<div class="usage">
+          <span class="usage-num ${numCls}">${rem}</span>
+          <div class="usage-bar"><div class="${cls}" style="width:${pct}%"></div></div>
+          <span class="usage-detail">${u.plan_usage}/${u.plan_limit}</span>
+        </div>`;
       } else {
-        usageCell = '<span style="color:var(--faint);">?</span>';
+        usageHtml = '<span style="color:var(--fg-tertiary);">?</span>';
       }
     } else {
-      usageCell = '<span style="color:var(--faint);">—</span>';
+      usageHtml = '<span style="color:var(--fg-tertiary);">—</span>';
     }
+
+    const activateBtn = isActive
+      ? '<button class="btn sm" disabled>✓ 启用中</button>'
+      : `<button class="btn sm primary" onclick="activateKey(${k.idx},'${esc(k.label)}')">⚡ 启用</button>`;
+
     return `<tr>
-      <td>${k.idx}</td>
-      <td>${esc(k.label)}</td>
-      <td class="keyid">${esc(k.secret_masked)}</td>
-      <td>${badge}</td>
-      <td class="usage-cell">${usageCell}</td>
-      <td class="note">${esc(k.note || '—')}</td>
+      <td><span style="color:var(--fg-tertiary);font-family:ui-monospace,monospace;">${k.idx}</span></td>
+      <td><span class="key-label">${esc(k.label)}</span></td>
+      <td><span class="key-secret">${esc(k.secret_masked)}</span></td>
+      <td>${statusBadge}</td>
+      <td>${usageHtml}</td>
+      <td><span class="key-note">${esc(k.note || '—')}</span></td>
       <td>
-        ${isActive
-          ? '<button class="btn sm" disabled style="opacity:0.5;cursor:not-allowed;">✓ 启用中</button>'
-          : `<button class="btn sm primary" onclick="activateKey(${k.idx},'${esc(k.label)}')">⚡ 立刻启用</button>`}
-        <button class="btn sm" onclick="editKey(${k.idx},'${esc(k.label)}','${esc(k.note)}')">编辑</button>
-        <button class="btn sm danger" onclick="deleteKey(${k.idx},'${esc(k.label)}')">删除</button>
+        <div class="btn-group" style="justify-content:flex-end;">
+          ${activateBtn}
+          <button class="btn sm ghost" onclick="editKey(${k.idx},'${esc(k.label)}','${esc(k.note)}')">编辑</button>
+          <button class="btn sm danger" onclick="deleteKey(${k.idx},'${esc(k.label)}')">删除</button>
+        </div>
       </td>
     </tr>`;
   }).join('');
-  $('keys-area').innerHTML = `
-    <table>
-      <thead><tr><th>#</th><th>label</th><th>key</th><th>状态</th><th>本月用量</th><th>备注</th><th>操作</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
 
-  // 轮询设置卡片
-  renderPollSettings(s.poll_interval_minutes);
+  $('keys-area').innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>label</th><th>key</th><th>状态</th><th>用量</th><th>备注</th><th style="text-align:right;">操作</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
-// 轮询预设档位(分钟 + 适用场景说明)
+// === 轮询 ===
 const POLL_PRESETS = [
-  { mins: 5,  label: '重度', desc: '连续 extract/research' },
-  { mins: 10, label: '频繁', desc: '每天上百次调用' },
-  { mins: 15, label: '适中', desc: '日常使用' },
-  { mins: 30, label: '常规', desc: '默认值' },
-  { mins: 60, label: '悠闲', desc: '偶尔搜索' },
+  { mins: 5,  sub: '重度' },
+  { mins: 10, sub: '频繁' },
+  { mins: 15, sub: '适中' },
+  { mins: 30, sub: '常规' },
+  { mins: 60, sub: '悠闲' },
 ];
 
-function renderPollSettings(currentMins) {
-  // 当前值提示
-  $('poll-current').textContent = `当前:每 ${currentMins} 分钟`;
-  // 自定义输入框预填当前值
+function renderPoll(currentMins) {
   $('poll-custom').value = currentMins;
-  // 预设按钮组
-  let html = POLL_PRESETS.map(p => {
+  $('poll-presets').innerHTML = POLL_PRESETS.map(p => {
     const isActive = p.mins === currentMins;
-    return `<button class="preset-btn ${isActive ? 'active' : ''}"
-              onclick="setPoll(${p.mins})"
-              title="${p.desc}">
-              ${p.mins} 分钟
-              <span class="preset-label">${p.label}</span>
-            </button>`;
+    return `<button class="${isActive ? 'active' : ''}" onclick="setPoll(${p.mins})">
+      ${p.mins}分<span class="seg-sub">${p.sub}</span>
+    </button>`;
   }).join('');
-  $('poll-presets').innerHTML = html;
 }
 
 async function setPoll(mins) {
   try {
     const res = await fetch(api('/config'), {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({poll_interval_minutes: mins})
     });
     const d = await res.json();
-    if (d.ok) {
-      showAlert(`✓ 轮询间隔已设为 ${mins} 分钟(下个周期生效)`, 'ok');
-      loadState();
-    } else {
-      showAlert(`✗ 设置失败: ${d.error || ''}`, '');
-    }
-  } catch (e) {
-    showAlert('✗ 请求失败: ' + e.message, '');
-  }
+    if (d.ok) { showAlert(`✓ 轮询间隔已设为 ${mins} 分钟`, 'ok'); loadState(); }
+    else showAlert(`✗ ${d.error || '失败'}`, 'err');
+  } catch (e) { showAlert('✗ ' + e.message, 'err'); }
 }
 
 async function setPollCustom() {
   const val = parseInt($('poll-custom').value, 10);
-  if (isNaN(val) || val < 1 || val > 1440) {
-    showAlert('✗ 请输入 1-1440 之间的数字', '');
-    return;
-  }
+  if (isNaN(val) || val < 1 || val > 1440) { showAlert('✗ 请输入 1-1440', 'err'); return; }
   await setPoll(val);
 }
 
+// === 切换历史 ===
 function renderRotations(rots) {
   if (!rots || rots.length === 0) {
     $('rotations-area').innerHTML = '<div class="empty">暂无切换记录</div>';
     return;
   }
-  let items = rots.slice(0, 20).map(r => {
+  const items = rots.slice(0, 15).map(r => {
     const d = new Date(r.ts * 1000);
-    const ts = d.toLocaleString('zh-CN', { hour12: false });
-    const from = r.from_label || '(启动)';
-    return `<li><span class="ts">${ts}</span> ${esc(from)} → ${esc(r.to_label)} · ${esc(r.reason)}</li>`;
+    const ts = d.toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12: false });
+    const from = r.from_label || '启动';
+    return `<li>
+      <span class="ts">${ts}</span>
+      <span>${esc(from)}</span>
+      <span class="arrow">→</span>
+      <span style="font-weight:500;">${esc(r.to_label)}</span>
+      <span class="reason">${esc(r.reason)}</span>
+    </li>`;
   }).join('');
   $('rotations-area').innerHTML = `<ul class="timeline">${items}</ul>`;
 }
 
+// === 工具 ===
 function esc(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-// 添加 key
+function showAlert(msg, type) {
+  const cls = type === 'ok' ? 'ok' : (type === 'err' ? 'err' : 'warn');
+  $('alert-area').innerHTML = `<div class="alert ${cls}">${msg}</div>`;
+  if (type === 'ok') setTimeout(() => { $('alert-area').innerHTML = ''; }, 4000);
+}
+
+// === Add Key ===
 function showAddModal() {
   $('add-modal').classList.add('show');
-  $('add-secret').value = '';
-  $('add-label').value = '';
-  $('add-note').value = '';
-  $('note-count').textContent = '0';
-  $('add-error').textContent = '';
+  $('add-secret').value = ''; $('add-label').value = ''; $('add-note').value = '';
+  $('note-count').textContent = '0'; $('add-error').textContent = '';
   $('add-secret').focus();
 }
 function hideAddModal() { $('add-modal').classList.remove('show'); }
-
-$('add-note')?.addEventListener('input', e => {
-  $('note-count').textContent = e.target.value.length;
-});
+$('add-note')?.addEventListener('input', e => { $('note-count').textContent = e.target.value.length; });
 
 async function submitAdd() {
   const secret = $('add-secret').value.trim();
   const label = $('add-label').value.trim();
   const note = $('add-note').value;
-  if (!secret || !label) {
-    $('add-error').textContent = 'secret 和 label 必填';
-    return;
-  }
+  if (!secret || !label) { $('add-error').textContent = 'secret 和 label 必填'; return; }
   try {
     const res = await fetch(api('/keys'), {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({secret, label, note})
     });
-    const data = await res.json();
-    if (res.ok && data.ok) {
-      hideAddModal();
-      showAlert('✓ 已添加 key[' + data.idx + '] ' + label, 'ok');
-      loadState();
-    } else {
-      $('add-error').textContent = data.error + (data.detail ? ': ' + data.detail : '');
-    }
-  } catch (e) {
-    $('add-error').textContent = '请求失败: ' + e.message;
-  }
+    const d = await res.json();
+    if (res.ok && d.ok) { hideAddModal(); showAlert('✓ 已添加 ' + label, 'ok'); loadState(); }
+    else $('add-error').textContent = d.error + (d.detail ? ': ' + d.detail : '');
+  } catch (e) { $('add-error').textContent = e.message; }
 }
 
-// 编辑 key(简化:用 prompt,Phase 3 后续可换模态框)
+async function activateKey(idx, label) {
+  if (!confirm(`立刻切换到 "${label}"?\n\n这会立即把 TAVILY_API_KEY 推成这个 key。\n新开的终端拿到新 key;已在跑的会话需重启。`)) return;
+  const btn = event?.target; if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  try {
+    const res = await fetch(api('/activate/' + idx), {method: 'POST'});
+    const d = await res.json();
+    if (d.ok) { showAlert(`✓ 已切换到 ${d.label || label}`, 'ok'); loadState(); }
+    else if (d.already_active) { showAlert(`"${label}" 已是 active`, 'warn'); }
+    else showAlert(`✗ ${d.error || '失败'}`, 'err');
+  } catch (e) { showAlert('✗ ' + e.message, 'err'); }
+}
+
 function editKey(idx, label, note) {
-  const newLabel = prompt('label:', label);
-  if (newLabel === null) return;
-  const newNote = prompt('备注(≤100 字符):', note);
-  if (newNote === null) return;
+  const newLabel = prompt('label:', label); if (newLabel === null) return;
+  const newNote = prompt('备注(≤100):', note); if (newNote === null) return;
   const body = {};
   if (newLabel !== label) body.label = newLabel;
   if (newNote !== note) body.note = newNote;
   if (Object.keys(body).length === 0) return;
   fetch(api('/keys/' + idx), {
-    method: 'PUT',
-    headers: {'Content-Type': 'application/json'},
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(body)
   }).then(r => r.json()).then(d => {
     if (d.ok) { showAlert('✓ 已更新', 'ok'); loadState(); }
-    else showAlert('✗ 更新失败: ' + (d.error || ''), '');
+    else showAlert('✗ ' + (d.error || '失败'), 'err');
   });
 }
 
-// 删除 key
 async function deleteKey(idx, label) {
-  if (!confirm(`确定删除 key[${idx}] "${label}"?\n\n这会从 keys.toml 永久移除(原子写,可从 git/备份恢复)。`)) return;
+  if (!confirm(`删除 "${label}"?\n从 keys.toml 永久移除。`)) return;
   const res = await fetch(api('/keys/' + idx), {method: 'DELETE'});
   const d = await res.json();
   if (d.ok) { showAlert('✓ 已删除 ' + label, 'ok'); loadState(); }
-  else showAlert('✗ 删除失败: ' + (d.error || ''), '');
+  else showAlert('✗ ' + (d.error || '失败'), 'err');
 }
 
-// 立刻切换到指定 key(手动指定,不按轮换顺序)
-async function activateKey(idx, label) {
-  if (!confirm(`立刻切换到 key[${idx}] "${label}"?\n\n这会立即把 TAVILY_API_KEY 推成这个 key(launchctl setenv)。\n新开的终端会拿到新 key。已在跑的会话需要重启才能生效。`)) return;
-  const btn = event?.target;
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ 切换中...'; }
-  try {
-    const res = await fetch(api('/activate/' + idx), {method: 'POST'});
-    const d = await res.json();
-    if (d.ok) {
-      showAlert(`✓ 已切换到 "${d.label || label}"`, 'ok');
-      loadState();  // 刷新表格(active 变了,按钮状态更新)
-    } else if (d.already_active) {
-      showAlert(`"${label}" 已经是 active key`, 'ok');
-    } else {
-      showAlert(`✗ 切换失败: ${d.error || ''}`, '');
-    }
-  } catch (e) {
-    showAlert('✗ 请求失败: ' + e.message, '');
-  }
-}
-
-// 查询全部用量
 async function refreshAll() {
-  showAlert('🔍 正在查询所有 key 的 /usage...', 'ok');
-  // 给"查询全部"按钮加 loading 态
-  const btn = event?.target;
-  if (btn) { btn.disabled = true; btn.textContent = '🔍 查询中...'; }
+  showAlert('🔍 查询中...', 'warn');
+  const btn = event?.target; if (btn) { btn.disabled = true; btn.textContent = '🔍 查询中...'; }
   try {
     const res = await fetch(api('/keys/refresh-all'), {method: 'POST'});
     const data = await res.json();
-    // 存到全局,按 idx 索引
     usageData = {};
-    let okCount = 0, warnCount = 0, errCount = 0;
+    let ok=0, warn=0, err=0;
     data.results.forEach(r => {
       usageData[r.idx] = r;
-      if (r.error) errCount++;
-      else if (r.remaining !== null && r.remaining < (lastState?.rotate_threshold || 20)) warnCount++;
-      else okCount++;
+      if (r.error) err++;
+      else if (r.remaining !== null && r.remaining < (lastState?.rotate_threshold || 20)) warn++;
+      else ok++;
     });
-    // 重渲染表格(用缓存的 state,只更新用量列)
-    if (lastState) renderState(lastState);
-    // 池总剩余
-    const totalRemaining = data.results.reduce((s, r) => s + (r.remaining || 0), 0);
-    const totalLimit = data.results.reduce((s, r) => s + (r.plan_limit || 1000), 0);
-    showAlert(`✓ 查询完成:${okCount} 正常 / ${warnCount} 快耗尽 / ${errCount} 错误 · 池总剩余 ${totalRemaining}/${totalLimit}`, 'ok');
-    // 3 秒后清提示
-    setTimeout(() => { $('alert-area').innerHTML = ''; }, 3000);
-  } catch (e) {
-    showAlert('✗ 查询失败: ' + e.message, '');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '🔍 查询全部用量'; }
-  }
+    if (lastState) renderKeys(lastState);
+    const total = data.results.reduce((s, r) => s + (r.remaining || 0), 0);
+    showAlert(`✓ ${ok} 正常 · ${warn} 快耗尽 · ${err} 错误 · 池总剩余 ${total}`, 'ok');
+  } catch (e) { showAlert('✗ ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '🔍 查询全部用量'; } }
 }
 
-function showAlert(msg, type, html) {
-  const cls = type === 'ok' ? 'alert ok' : 'alert';
-  $('alert-area').innerHTML = `<div class="${cls}">${msg}${html || ''}</div>`;
-  if (type === 'ok') setTimeout(() => { $('alert-area').innerHTML = ''; }, 8000);
-}
-
-// 初始加载 + 每 60s 刷新
 loadState();
 setInterval(loadState, 60000);
 </script>
