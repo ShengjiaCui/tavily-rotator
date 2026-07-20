@@ -9,10 +9,13 @@
 
 mod api;
 mod config;
+mod db;
 mod env_push;
+mod rotator;
+mod tavily;
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicUsize};
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -33,12 +36,21 @@ pub struct AppState {
     /// 环境变量是否已推送。
     pub env_pushed: AtomicBool,
 
-    /// 环境变量推送时间(ISO 8601)。
+    /// 环境变量推送时间。
     pub env_pushed_at: RwLock<Option<String>>,
+
+    /// HTTP 客户端(复用连接池)。
+    pub http: reqwest::Client,
+
+    /// SQLite 数据库。
+    pub db: db::Db,
+
+    /// 上次月初重置检查的月份(year*12+month),用于判断跨月。
+    pub last_reset_check: AtomicI64,
 }
 
 impl AppState {
-    /// 计算距下月 1 号(UTC)还有几天。Phase 2 精确实现。
+    /// 距下月 1 号(UTC)还有几天。Phase 3 精确实现,先返回占位。
     pub fn days_to_reset(&self) -> Option<u32> {
         None
     }
@@ -66,7 +78,9 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config_path = config::default_config_path();
-    tracing::info!("配置文件路径: {}", config_path.display());
+    let db_path = db::default_db_path();
+    tracing::info!("配置文件: {}", config_path.display());
+    tracing::info!("SQLite: {}", db_path.display());
 
     // 加载配置
     let cfg = match config::Config::load(&config_path) {
@@ -89,23 +103,35 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("key 池为空!daemon 会启动但 /api/active 返回 503");
     }
 
-    // 初始化 active key(Phase 1:固定用 keys[0];Phase 2 从 SQLite 读 active_pointer)
-    let active_idx = if cfg.keys.is_empty() {
-        usize::MAX
-    } else {
-        0
+    // 打开 SQLite
+    let database = db::Db::open(&db_path)?;
+
+    // 从 SQLite 读 active_pointer(Phase 2:持久化)
+    // None = 首次启动,用 keys[0]
+    let active_idx = match database.get_active_pointer().await? {
+        Some((idx, _, _)) if idx < cfg.keys.len() => idx,
+        _ => 0,
     };
+    tracing::info!("active 指针(SQLite)= key[{active_idx}]");
+
+    // HTTP 客户端(复用连接池)
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()?;
 
     let state = Arc::new(AppState {
         config: RwLock::new(cfg.clone()),
-        active_idx: AtomicUsize::new(active_idx),
+        active_idx: AtomicUsize::new(if cfg.keys.is_empty() { usize::MAX } else { active_idx }),
         last_remaining: AtomicU32::new(0),
         env_pushed: AtomicBool::new(false),
         env_pushed_at: RwLock::new(None),
+        http,
+        db: database,
+        last_reset_check: AtomicI64::new(0),
     });
 
     // 启动时立即推送 active key 到环境变量(§8.5 启动时序)
-    if active_idx != usize::MAX {
+    if active_idx < cfg.keys.len() {
         let key = &cfg.keys[active_idx].secret;
         match env_push::push_env(key) {
             Ok(()) => {
@@ -115,18 +141,21 @@ async fn main() -> anyhow::Result<()> {
                 let ts = now_unix();
                 *state.env_pushed_at.write().await = Some(format!("@{ts}"));
                 tracing::info!(
-                    "启动推送 TAVILY_API_KEY = keys[{}] \"{}\" ({} bytes)",
-                    active_idx,
-                    cfg.keys[active_idx].label,
-                    key.len()
+                    "启动推送 TAVILY_API_KEY = keys[{active_idx}] \"{}\"",
+                    cfg.keys[active_idx].label
                 );
             }
             Err(e) => {
                 tracing::error!("启动推送环境变量失败: {e}");
-                tracing::error!("新开的终端可能拿不到 TAVILY_API_KEY");
             }
         }
     }
+
+    // 启动轮换循环(后台 task)
+    let rotator_state = state.clone();
+    tokio::spawn(async move {
+        rotator::run(rotator_state).await;
+    });
 
     // 启动 HTTP 服务
     let addr = SocketAddr::from(([127, 0, 0, 1], 8731));
