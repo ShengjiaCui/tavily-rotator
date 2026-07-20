@@ -122,6 +122,15 @@ async fn poll_once(state: &Arc<AppState>) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// 轮换到下一个有效 key(公开版本,供 /api/rotate 调用)。
+pub async fn rotate_to_next_public(
+    state: &Arc<AppState>,
+    cfg: &crate::config::Config,
+    reason: &str,
+) -> anyhow::Result<()> {
+    rotate_to_next(state, cfg, reason).await
+}
+
 /// 轮换到下一个有效 key。
 /// 顺序:从当前 active_idx 往后找,绕一圈回不到自己(否则说明全耗尽)。
 async fn rotate_to_next(
@@ -204,6 +213,16 @@ async fn rotate_to_next(
     set_active(state, next, cfg, reason).await
 }
 
+/// 设置 active key + 推环境变量 + 记 rotation(公开版本)。
+pub async fn set_active_public(
+    state: &Arc<AppState>,
+    idx: usize,
+    cfg: &crate::config::Config,
+    reason: &str,
+) -> anyhow::Result<()> {
+    set_active(state, idx, cfg, reason).await
+}
+
 /// 设置 active key + 推环境变量 + 记 rotation。
 async fn set_active(
     state: &Arc<AppState>,
@@ -258,6 +277,25 @@ async fn set_active(
         cfg.keys[idx].label,
         reason
     );
+
+    // 立刻查一次新 key 的 /usage 更新 remaining(修复 Phase 2 已知小瑕疵)
+    // 失败不致命(下个 tick 会查)
+    if let Ok((plan_usage, plan_limit, _, _, _, _, _)) =
+        crate::tavily::query_usage(&state.http, secret).await
+    {
+        let remaining = plan_limit.saturating_sub(plan_usage);
+        state
+            .last_remaining
+            .store(remaining, std::sync::atomic::Ordering::Relaxed);
+        tracing::info!(
+            "新 active key[{}] \"{}\" /usage: {}/{} (剩余 {})",
+            idx,
+            cfg.keys[idx].label,
+            plan_usage,
+            plan_limit,
+            remaining
+        );
+    }
 
     Ok(())
 }

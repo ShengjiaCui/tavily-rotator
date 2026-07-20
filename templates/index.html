@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tavily Rotator</title>
+<style>
+  :root {
+    --bg: #fafafa; --card: #fff; --fg: #1a1a1a; --muted: #666; --faint: #999;
+    --border: #e1e4e8; --accent: #0969da; --accent-bg: #ddf4ff;
+    --warn: #d1242f; --warn-bg: #ffebe9; --ok: #1a7f37; --ok-bg: #dafbe1;
+    --code-bg: #f6f8fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --card: #161b22; --fg: #e6edf3; --muted: #9198a1; --faint: #6e7681;
+      --border: #30363d; --accent: #58a6ff; --accent-bg: #0d2d5a;
+      --warn: #f85149; --warn-bg: #4a1e1e; --ok: #3fb950; --ok-bg: #1a3a1f;
+      --code-bg: #161b22;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "PingFang SC", "Segoe UI", sans-serif;
+    font-size: 14px; line-height: 1.6;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 20px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 6px; padding: 16px; margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--faint); margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .state-row { display: flex; align-items: center; gap: 16px; }
+  .big-num { font-size: 28px; font-weight: 600; line-height: 1; }
+  .big-num .unit { font-size: 13px; color: var(--muted); font-weight: 400; }
+  .progress { flex: 1; height: 8px; background: var(--code-bg); border-radius: 4px; overflow: hidden; }
+  .progress > div { height: 100%; background: var(--ok); transition: width 0.3s; }
+  .progress.warn > div { background: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--faint); font-weight: 500; font-size: 11px; text-transform: uppercase; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+  .badge.active { background: var(--ok-bg); color: var(--ok); }
+  .badge.retired { background: var(--warn-bg); color: var(--warn); }
+  .badge.standby { background: var(--code-bg); color: var(--muted); }
+  .keyid { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); }
+  .note { font-size: 12px; color: var(--muted); max-width: 180px; }
+  .btn {
+    display: inline-block; padding: 5px 12px; border: 1px solid var(--border);
+    border-radius: 4px; background: var(--card); color: var(--fg);
+    font-size: 12px; cursor: pointer; margin-left: 4px;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.danger { color: var(--warn); border-color: var(--warn); }
+  .btn.sm { padding: 3px 8px; font-size: 11px; }
+  .alert {
+    background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn);
+    padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;
+  }
+  .alert.ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+  .modal-bg {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  .modal-bg.show { display: flex; }
+  .modal {
+    background: var(--card); border-radius: 8px; padding: 24px;
+    width: 90%; max-width: 460px; border: 1px solid var(--border);
+  }
+  .modal h2 { font-size: 16px; margin: 0 0 16px; }
+  .form-row { margin-bottom: 12px; }
+  .form-row label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .form-row input, .form-row textarea {
+    width: 100%; padding: 6px 8px; border: 1px solid var(--border);
+    border-radius: 4px; font-size: 13px; background: var(--bg); color: var(--fg);
+    font-family: inherit;
+  }
+  .form-row textarea { resize: vertical; min-height: 50px; }
+  .char-count { text-align: right; font-size: 11px; color: var(--faint); }
+  .timeline { list-style: none; padding: 0; margin: 0; }
+  .timeline li { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .timeline .ts { color: var(--faint); font-size: 11px; width: 150px; display: inline-block; }
+  .empty { color: var(--faint); font-style: italic; text-align: center; padding: 20px; }
+  .kv { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+  .kv .k { color: var(--muted); }
+  .kv .v { font-family: ui-monospace, monospace; }
+  .kv .v.ok { color: var(--ok); }
+  .kv .v.bad { color: var(--warn); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot.ok { background: var(--ok); }
+  .dot.bad { background: var(--warn); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Tavily Rotator</h1>
+  <div class="sub" id="sub">127.0.0.1:8731 · 加载中...</div>
+
+  <div id="alert-area"></div>
+
+  <div class="card">
+    <div class="card-title">当前 active key</div>
+    <div id="active-area"><div class="empty">加载中...</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      Key 池
+      <span>
+        <button class="btn sm" onclick="refreshAll()">🔍 查询全部用量</button>
+        <button class="btn sm primary" onclick="showAddModal()">+ 添加 key</button>
+      </span>
+    </div>
+    <div id="keys-area"><div class="empty">加载中...</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">切换历史(最近 20 条)</div>
+    <div id="rotations-area"><div class="empty">加载中...</div></div>
+  </div>
+</div>
+
+<!-- 添加 key 模态框 -->
+<div class="modal-bg" id="add-modal">
+  <div class="modal">
+    <h2>添加新 key</h2>
+    <div class="form-row">
+      <label>API key <span style="color:var(--warn)">*</span></label>
+      <input type="text" id="add-secret" placeholder="tvly-dev-xxxxxxxxxxxxxxxxxxxxxxxxx">
+    </div>
+    <div class="form-row">
+      <label>label <span style="color:var(--faint)">(简短标识)</span></label>
+      <input type="text" id="add-label" placeholder="如:work-main / backup-3">
+    </div>
+    <div class="form-row">
+      <label>备注 note <span style="color:var(--faint)">(≤100 字符)</span></label>
+      <textarea id="add-note" placeholder="如:张三 7 月注册的号"></textarea>
+      <div class="char-count"><span id="note-count">0</span> / 100</div>
+    </div>
+    <div style="margin-top:16px;">
+      <button class="btn primary" onclick="submitAdd()">添加</button>
+      <button class="btn" onclick="hideAddModal()">取消</button>
+    </div>
+    <div id="add-error" style="color:var(--warn);font-size:12px;margin-top:8px;"></div>
+  </div>
+</div>
+
+<script>
+const api = (path) => '/api' + path;
+const $ = (id) => document.getElementById(id);
+
+async function loadState() {
+  try {
+    const [stateRes, rotRes] = await Promise.all([
+      fetch(api('/state')).then(r => r.json()),
+      fetch(api('/rotations')).then(r => r.json()),
+    ]);
+    renderState(stateRes);
+    renderRotations(rotRes);
+    $('sub').textContent = `127.0.0.1:8731 · ${stateRes.pool_size} 个 key · 阈值 ${stateRes.rotate_threshold}`;
+  } catch (e) {
+    $('sub').textContent = '加载失败: ' + e.message;
+  }
+}
+
+function renderState(s) {
+  // active 区
+  if (s.active_label) {
+    const remaining = s.active_remaining;
+    const remainingText = remaining !== null && remaining !== undefined
+      ? `${remaining} <span class="unit">credits</span>` : `— <span class="unit">(待查询)</span>`;
+    const pct = remaining ? Math.min(100, Math.round(remaining / 1000 * 100)) : 0;
+    const warnClass = remaining !== null && remaining < s.rotate_threshold ? ' warn' : '';
+    $('active-area').innerHTML = `
+      <div class="state-row">
+        <div class="big-num">${remainingText}</div>
+        <div class="progress${warnClass}"><div style="width:${pct}%"></div></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px;">
+        key[${s.active_idx}] · ${s.active_label} · env ${s.env_pushed ? '✓ 已推送' : '✗ 未推送'}
+      </div>`;
+  } else {
+    $('active-area').innerHTML = '<div class="empty">无 active key(池空或全耗尽)</div>';
+  }
+
+  // key 池表
+  if (s.keys.length === 0) {
+    $('keys-area').innerHTML = '<div class="empty">key 池为空,点 "+ 添加 key" 添加</div>';
+    return;
+  }
+  let rows = s.keys.map(k => {
+    const isActive = k.idx === s.active_idx;
+    const badge = isActive ? '<span class="badge active">active</span>'
+      : `<span class="badge standby">#${k.idx}</span>`;
+    return `<tr>
+      <td>${k.idx}</td>
+      <td>${esc(k.label)}</td>
+      <td class="keyid">${esc(k.secret_masked)}</td>
+      <td>${badge}</td>
+      <td class="note">${esc(k.note || '—')}</td>
+      <td>
+        <button class="btn sm" onclick="editKey(${k.idx},'${esc(k.label)}','${esc(k.note)}')">编辑</button>
+        <button class="btn sm danger" onclick="deleteKey(${k.idx},'${esc(k.label)}')">删除</button>
+      </td>
+    </tr>`;
+  }).join('');
+  $('keys-area').innerHTML = `
+    <table>
+      <thead><tr><th>#</th><th>label</th><th>key</th><th>状态</th><th>备注</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderRotations(rots) {
+  if (!rots || rots.length === 0) {
+    $('rotations-area').innerHTML = '<div class="empty">暂无切换记录</div>';
+    return;
+  }
+  let items = rots.slice(0, 20).map(r => {
+    const d = new Date(r.ts * 1000);
+    const ts = d.toLocaleString('zh-CN', { hour12: false });
+    const from = r.from_label || '(启动)';
+    return `<li><span class="ts">${ts}</span> ${esc(from)} → ${esc(r.to_label)} · ${esc(r.reason)}</li>`;
+  }).join('');
+  $('rotations-area').innerHTML = `<ul class="timeline">${items}</ul>`;
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// 添加 key
+function showAddModal() {
+  $('add-modal').classList.add('show');
+  $('add-secret').value = '';
+  $('add-label').value = '';
+  $('add-note').value = '';
+  $('note-count').textContent = '0';
+  $('add-error').textContent = '';
+  $('add-secret').focus();
+}
+function hideAddModal() { $('add-modal').classList.remove('show'); }
+
+$('add-note')?.addEventListener('input', e => {
+  $('note-count').textContent = e.target.value.length;
+});
+
+async function submitAdd() {
+  const secret = $('add-secret').value.trim();
+  const label = $('add-label').value.trim();
+  const note = $('add-note').value;
+  if (!secret || !label) {
+    $('add-error').textContent = 'secret 和 label 必填';
+    return;
+  }
+  try {
+    const res = await fetch(api('/keys'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({secret, label, note})
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      hideAddModal();
+      showAlert('✓ 已添加 key[' + data.idx + '] ' + label, 'ok');
+      loadState();
+    } else {
+      $('add-error').textContent = data.error + (data.detail ? ': ' + data.detail : '');
+    }
+  } catch (e) {
+    $('add-error').textContent = '请求失败: ' + e.message;
+  }
+}
+
+// 编辑 key(简化:用 prompt,Phase 3 后续可换模态框)
+function editKey(idx, label, note) {
+  const newLabel = prompt('label:', label);
+  if (newLabel === null) return;
+  const newNote = prompt('备注(≤100 字符):', note);
+  if (newNote === null) return;
+  const body = {};
+  if (newLabel !== label) body.label = newLabel;
+  if (newNote !== note) body.note = newNote;
+  if (Object.keys(body).length === 0) return;
+  fetch(api('/keys/' + idx), {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  }).then(r => r.json()).then(d => {
+    if (d.ok) { showAlert('✓ 已更新', 'ok'); loadState(); }
+    else showAlert('✗ 更新失败: ' + (d.error || ''), '');
+  });
+}
+
+// 删除 key
+async function deleteKey(idx, label) {
+  if (!confirm(`确定删除 key[${idx}] "${label}"?\n\n这会从 keys.toml 永久移除(原子写,可从 git/备份恢复)。`)) return;
+  const res = await fetch(api('/keys/' + idx), {method: 'DELETE'});
+  const d = await res.json();
+  if (d.ok) { showAlert('✓ 已删除 ' + label, 'ok'); loadState(); }
+  else showAlert('✗ 删除失败: ' + (d.error || ''), '');
+}
+
+// 查询全部用量
+async function refreshAll() {
+  showAlert('🔍 正在查询所有 key 的 /usage...', 'ok');
+  try {
+    const res = await fetch(api('/keys/refresh-all'), {method: 'POST'});
+    const data = await res.json();
+    let html = '<table><thead><tr><th>#</th><th>label</th><th>剩余</th><th>已用</th><th>状态</th></tr></thead><tbody>';
+    data.results.forEach(r => {
+      const rem = r.remaining !== null ? r.remaining : '—';
+      const used = r.plan_usage !== null ? `${r.plan_usage}/${r.plan_limit}` : '—';
+      const status = r.error ? `<span class="badge retired">错误</span>` :
+        (r.remaining !== null && r.remaining < 20 ? '<span class="badge retired">快耗尽</span>' :
+         '<span class="badge standby">正常</span>');
+      html += `<tr><td>${r.idx}</td><td>${esc(r.label)}</td><td>${rem}</td><td>${used}</td><td>${status}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    showAlert('✓ 查询完成', 'ok', html);
+    loadState(); // 刷新主面板(active remaining 可能更新)
+  } catch (e) {
+    showAlert('✗ 查询失败: ' + e.message, '');
+  }
+}
+
+function showAlert(msg, type, html) {
+  const cls = type === 'ok' ? 'alert ok' : 'alert';
+  $('alert-area').innerHTML = `<div class="${cls}">${msg}${html || ''}</div>`;
+  if (type === 'ok') setTimeout(() => { $('alert-area').innerHTML = ''; }, 8000);
+}
+
+// 初始加载 + 每 60s 刷新
+loadState();
+setInterval(loadState, 60000);
+</script>
+</body>
+</html>
