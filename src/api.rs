@@ -36,6 +36,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/keys/{idx}", axum::routing::put(update_key).delete(delete_key))
         .route("/api/keys/refresh-all", post(refresh_all))
         .route("/api/rotate", post(rotate_now))
+        .route("/api/activate/{idx}", post(activate_key))
         .route("/api/rotations", get(get_rotations))
         .route("/api/environment", get(get_environment))
         .route("/api/install", post(install))
@@ -487,6 +488,43 @@ async fn rotate_now(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let cfg = state.config.read().await.clone();
     match crate::rotator::rotate_to_next_public(&state, &cfg, "manual").await {
         Ok(()) => Json(serde_json::json!({"ok": true})).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"ok": false, "error": e.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+// ===================================================================
+// /api/activate/{idx} POST — 立刻切换到指定 key(手动指定,不按轮换顺序)
+// ===================================================================
+
+async fn activate_key(
+    State(state): State<Arc<AppState>>,
+    Path(idx): Path<usize>,
+) -> impl IntoResponse {
+    let cfg = state.config.read().await.clone();
+
+    if idx >= cfg.keys.len() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"ok": false, "error": "idx_out_of_range"})),
+        )
+            .into_response();
+    }
+
+    // 已经是 active,无需切换
+    let current = state.active_idx.load(std::sync::atomic::Ordering::Relaxed);
+    if current == idx {
+        return Json(serde_json::json!({"ok": true, "already_active": true})).into_response();
+    }
+
+    match crate::rotator::set_active_public(&state, idx, &cfg, "manual_activate").await {
+        Ok(()) => {
+            tracing::info!("手动激活 key[{}] \"{}\"", idx, cfg.keys[idx].label);
+            Json(serde_json::json!({"ok": true, "label": cfg.keys[idx].label})).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"ok": false, "error": e.to_string()})),

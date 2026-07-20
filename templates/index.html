@@ -232,6 +232,9 @@ function renderState(s) {
       <td class="usage-cell">${usageCell}</td>
       <td class="note">${esc(k.note || '—')}</td>
       <td>
+        ${isActive
+          ? '<button class="btn sm" disabled style="opacity:0.5;cursor:not-allowed;">✓ 启用中</button>'
+          : `<button class="btn sm primary" onclick="activateKey(${k.idx},'${esc(k.label)}')">⚡ 立刻启用</button>`}
         <button class="btn sm" onclick="editKey(${k.idx},'${esc(k.label)}','${esc(k.note)}')">编辑</button>
         <button class="btn sm danger" onclick="deleteKey(${k.idx},'${esc(k.label)}')">删除</button>
       </td>
@@ -239,7 +242,7 @@ function renderState(s) {
   }).join('');
   $('keys-area').innerHTML = `
     <table>
-      <thead><tr><th>#</th><th>label</th><th>key</th><th>状态</th><th>本月用量</th><th>备注</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>label</th><th>key</th><th>状态</th><th>本月用量</th><th>备注</th><th>操作</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
@@ -333,6 +336,27 @@ async function deleteKey(idx, label) {
   const d = await res.json();
   if (d.ok) { showAlert('✓ 已删除 ' + label, 'ok'); loadState(); }
   else showAlert('✗ 删除失败: ' + (d.error || ''), '');
+}
+
+// 立刻切换到指定 key(手动指定,不按轮换顺序)
+async function activateKey(idx, label) {
+  if (!confirm(`立刻切换到 key[${idx}] "${label}"?\n\n这会立即把 TAVILY_API_KEY 推成这个 key(launchctl setenv)。\n新开的终端会拿到新 key。已在跑的会话需要重启才能生效。`)) return;
+  const btn = event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 切换中...'; }
+  try {
+    const res = await fetch(api('/activate/' + idx), {method: 'POST'});
+    const d = await res.json();
+    if (d.ok) {
+      showAlert(`✓ 已切换到 "${d.label || label}"`, 'ok');
+      loadState();  // 刷新表格(active 变了,按钮状态更新)
+    } else if (d.already_active) {
+      showAlert(`"${label}" 已经是 active key`, 'ok');
+    } else {
+      showAlert(`✗ 切换失败: ${d.error || ''}`, '');
+    }
+  } catch (e) {
+    showAlert('✗ 请求失败: ' + e.message, '');
+  }
 }
 
 // 查询全部用量
