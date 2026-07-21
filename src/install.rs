@@ -116,6 +116,7 @@ fn detect_skill(name: &str) -> ComponentStatus {
     let home = std::env::var("HOME").unwrap_or_else(|_| {
         std::env::var("USERPROFILE").unwrap_or_default()
     });
+    #[allow(unused_mut)]
     let mut candidates = vec![
         format!("{home}/.agents/skills/{name}"),
         format!("{home}/.zcode/skills/{name}"),

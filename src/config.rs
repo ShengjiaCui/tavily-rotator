@@ -169,10 +169,7 @@ pub enum ConfigError {
 #[cfg(windows)]
 fn windows_rename(from: &Path, to: &Path) -> std::io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
-    use winapi::um::fileapi::MoveFileExW;
-    use winapi::um::winbase::{
-        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-    };
+    use winapi::um::winbase::{MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH};
 
     fn to_wide(p: &Path) -> Vec<u16> {
         p.as_os_str().encode_wide().chain(std::iter::once(0)).collect()

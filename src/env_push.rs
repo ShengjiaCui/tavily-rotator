@@ -235,7 +235,7 @@ fn ensure_shell_profile_sources() -> std::io::Result<()> {
     // 检查常见的 shell profile 文件
     let profiles = [".bashrc", ".zshrc"];
     for p in &profiles {
-        let path = std::path::Path::new(home).join(p);
+        let path = std::path::Path::new(&home).join(p);
         if !path.exists() {
             continue;
         }
