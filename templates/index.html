@@ -95,6 +95,16 @@
     width: 7px; height: 7px; border-radius: 50%; background: currentColor;
     animation: pulse 2s infinite;
   }
+  .header-link {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: 20px;
+    font-size: 12px; font-weight: 500;
+    color: var(--fg-secondary); text-decoration: none;
+    border: 1px solid var(--border-subtle);
+    transition: all 0.12s;
+  }
+  .header-link:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
+  .header-right { display: flex; align-items: center; gap: 8px; }
   @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
@@ -373,9 +383,14 @@
         <div class="header-sub" id="sub">加载中...</div>
       </div>
     </div>
-    <div id="status-pill" class="status-pill">
-      <span class="dot"></span>
-      <span id="status-text">运行中</span>
+    <div class="header-right">
+      <a class="header-link" href="https://docs.tavily.com/welcome" target="_blank" rel="noopener noreferrer" title="Tavily 官方文档">
+        📖 Tavily 文档
+      </a>
+      <div id="status-pill" class="status-pill">
+        <span class="dot"></span>
+        <span id="status-text">运行中</span>
+      </div>
     </div>
   </div>
 
