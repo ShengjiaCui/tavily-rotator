@@ -1,26 +1,40 @@
 #!/usr/bin/env bash
-# tavily-rotator selftest
+# tavily-rotator selftest(跨平台)
 #
-# 装完 install.sh 后跑这个脚本,逐项核验。PASS/FAIL 计数,非零退出。
-#
+# 装完后跑这个脚本,逐项核验。PASS/FAIL 计数,非零退出。
 # 用法: ./scripts/selftest.sh
 
 set -u
 
-LABEL="com.tavily-rotator"
-BIN_PATH="$HOME/.local/bin/tavily-rotator"
-PLIST_PATH="$HOME/Library/LaunchAgents/${LABEL}.plist"
+# 通用路径
 KEYS_TOML="$HOME/.config/tavily-rotator/keys.toml"
 STATE_DB="$HOME/.local/share/tavily-rotator/state.db"
 LOG_PATH="$HOME/.local/share/tavily-rotator/daemon.log"
 PORT="8731"
+OS="$(uname)"
+
+# 平台特定:二进制路径 + 服务检查方式
+case "$OS" in
+    Darwin)
+        BIN_PATH="$HOME/.local/bin/tavily-rotator"
+        SERVICE_LABEL="com.tavily-rotator"
+        ;;
+    Linux)
+        BIN_PATH="$HOME/.local/bin/tavily-rotator"
+        SERVICE_LABEL="tavily-rotator"  # systemd service 名
+        ;;
+    *)
+        # Windows 用 selftest.ps1,这里退出
+        echo "Windows 请用: powershell -File scripts/selftest.ps1"
+        exit 1
+        ;;
+esac
 
 failures=0
-
 pass() { printf 'PASS %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; failures=$((failures + 1)); }
 
-echo "=== tavily-rotator selftest ==="
+echo "=== tavily-rotator selftest ($OS) ==="
 echo
 
 # 1. 二进制存在
@@ -30,35 +44,40 @@ else
     fail "二进制 $BIN_PATH 缺失或不可执行"
 fi
 
-# 2. plist 存在
-if [ -f "$PLIST_PATH" ]; then
-    pass "plist $PLIST_PATH 存在"
-else
-    fail "plist $PLIST_PATH 缺失"
-fi
-
-# 3. launchd 在跑
-if launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
-    STATE=$(launchctl print "gui/$(id -u)/$LABEL" | grep -E '^\s*state' | head -1 | sed 's/.*= //')
-    if echo "$STATE" | grep -q running; then
-        pass "launchd daemon 运行中(state=$STATE)"
-    else
-        fail "launchd daemon 状态异常(state=$STATE)"
-    fi
-else
-    fail "launchd 未加载 $LABEL"
-fi
+# 2+3. 服务状态(平台分发)
+case "$OS" in
+    Darwin)
+        PLIST_PATH="$HOME/Library/LaunchAgents/${SERVICE_LABEL}.plist"
+        if [ -f "$PLIST_PATH" ]; then
+            pass "plist 存在"
+        else
+            fail "plist 缺失($PLIST_PATH)"
+        fi
+        if launchctl print "gui/$(id -u)/$SERVICE_LABEL" >/dev/null 2>&1; then
+            pass "launchd daemon 运行中"
+        else
+            fail "launchd 未加载 $SERVICE_LABEL"
+        fi
+        ;;
+    Linux)
+        if systemctl --user is-active --quiet "$SERVICE_LABEL" 2>/dev/null; then
+            pass "systemd service 运行中"
+        else
+            fail "systemd service 未运行(systemctl --user status $SERVICE_LABEL)"
+        fi
+        ;;
+esac
 
 # 4. keys.toml 权限 0600
 if [ -f "$KEYS_TOML" ]; then
     PERM=$(stat -f '%Sp' "$KEYS_TOML" 2>/dev/null || stat -c '%A' "$KEYS_TOML" 2>/dev/null)
     if echo "$PERM" | grep -qE 'rw-------|600'; then
-        pass "keys.toml 权限 0600 ($PERM)"
+        pass "keys.toml 权限 0600"
     else
-        fail "keys.toml 权限不是 0600 (实际 $PERM)"
+        fail "keys.toml 权限不是 0600(实际 $PERM)"
     fi
 else
-    fail "keys.toml 缺失($KEYS_TOML)"
+    fail "keys.toml 缺失"
 fi
 
 # 5. keys.toml 至少有 1 个 key
@@ -78,33 +97,48 @@ else
     fail "HTTP /health 无响应(端口 $PORT)"
 fi
 
-# 7. HTTP /api/active
+# 7. /api/active
 ACTIVE_JSON=$(curl -sf "http://127.0.0.1:$PORT/api/active" 2>/dev/null || echo "")
 if echo "$ACTIVE_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "label" in d' 2>/dev/null; then
     LABEL_VAL=$(echo "$ACTIVE_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["label"])')
-    pass "/api/active 返回 active key: $LABEL_VAL"
+    pass "/api/active 返回: $LABEL_VAL"
 else
     fail "/api/active 无响应或格式异常"
 fi
 
-# 8. launchctl getenv TAVILY_API_KEY 有值
-TAVILY_VAL=$(launchctl getenv TAVILY_API_KEY 2>/dev/null || echo "")
+# 8. 环境变量推送验证(平台分发)
+case "$OS" in
+    Darwin)
+        TAVILY_VAL=$(launchctl getenv TAVILY_API_KEY 2>/dev/null || echo "")
+        SOURCE_DESC="launchctl"
+        ;;
+    Linux)
+        # Linux:读 active-env.sh
+        ACTIVE_ENV="$HOME/.config/tavily-rotator/active-env.sh"
+        if [ -f "$ACTIVE_ENV" ]; then
+            TAVILY_VAL=$(grep -oE 'TAVILY_API_KEY="[^"]*"' "$ACTIVE_ENV" 2>/dev/null | sed 's/.*="//;s/"//' || echo "")
+            SOURCE_DESC="active-env.sh"
+        else
+            TAVILY_VAL=""
+            SOURCE_DESC="active-env.sh(缺失)"
+        fi
+        ;;
+esac
+
 if [ -n "$TAVILY_VAL" ]; then
-    pass "launchctl getenv TAVILY_API_KEY 有值(${TAVILY_VAL:0:16}...${TAVILY_VAL: -4})"
+    pass "$SOURCE_DESC TAVILY_API_KEY 有值(${TAVILY_VAL:0:16}...${TAVILY_VAL: -4})"
 else
-    fail "launchctl getenv TAVILY_API_KEY 无值(daemon 未推送环境变量)"
+    fail "$SOURCE_DESC 无 TAVILY_API_KEY(daemon 未推送)"
 fi
 
-# 9. tvly auth source 正确(null = 无认证 或 env var = 用环境变量,都 OK;
-#    stored/path = tvly login 了,会覆盖环境变量注入,轮换失效)
+# 9. tvly auth source
 if command -v tvly >/dev/null 2>&1; then
     AUTH_SRC=$(tvly auth --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("source"))' 2>/dev/null || echo "ERROR")
-    # null/None 或包含 "environment variable" 都算正确(用环境变量)
     if [ "$AUTH_SRC" = "None" ] || [ "$AUTH_SRC" = "null" ] || \
        echo "$AUTH_SRC" | grep -qi "environment variable"; then
-        pass "tvly auth_source 正确($AUTH_SRC,轮换生效)"
+        pass "tvly auth_source 正确($AUTH_SRC)"
     else
-        fail "tvly auth_source=$AUTH_SRC(tvly login 了,会覆盖环境变量注入,请运行 tvly logout)"
+        fail "tvly auth_source=$AUTH_SRC(login 了会覆盖,请 tvly logout)"
     fi
 else
     fail "tvly 不在 PATH(需安装:见 Web 面板一键安装)"
@@ -124,15 +158,14 @@ else
     fail "SQLite 数据库缺失($STATE_DB)"
 fi
 
-# 11. 日志文件存在
+# 11. 日志文件
 if [ -f "$LOG_PATH" ]; then
-    pass "日志文件存在($LOG_PATH)"
+    pass "日志文件存在"
 else
     fail "日志文件缺失($LOG_PATH)"
 fi
 
 echo
-echo "=== 结果 ==="
 if [ "$failures" -eq 0 ]; then
     printf '🎉 全部通过(0 failures)\n'
     exit 0

@@ -113,12 +113,21 @@ fn detect_tvly() -> ComponentStatus {
 }
 
 fn detect_skill(name: &str) -> ComponentStatus {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let candidates = [
+    let home = std::env::var("HOME").unwrap_or_else(|_| {
+        std::env::var("USERPROFILE").unwrap_or_default()
+    });
+    let mut candidates = vec![
         format!("{home}/.agents/skills/{name}"),
         format!("{home}/.zcode/skills/{name}"),
         format!("{home}/.claude/skills/{name}"),
     ];
+    // Windows 额外路径
+    #[cfg(windows)]
+    {
+        let userprofile = std::env::var("USERPROFILE").unwrap_or_default();
+        candidates.push(format!("{userprofile}\\AppData\\Roaming\\skills\\{name}"));
+        candidates.push(format!("{userprofile}\\.skills\\{name}"));
+    }
 
     for c in &candidates {
         let p = std::path::Path::new(c);
@@ -150,14 +159,24 @@ fn which(cmd: &str) -> Option<String> {
         return Some(p);
     }
 
-    // 2. launchd 环境常见的"用户级"安装位置
-    let home = std::env::var("HOME").unwrap_or_default();
-    let fallbacks = [
+    // 2. 常见的"用户级"安装位置(launchd/systemd 环境的 PATH 很短,
+    //    不含 ~/.local/bin / ~/.cargo/bin,需要显式补查)
+    let home = std::env::var("HOME").unwrap_or_else(|_| {
+        std::env::var("USERPROFILE").unwrap_or_default()
+    });
+    let mut fallbacks = vec![
         format!("{home}/.local/bin/{cmd}"),
         format!("{home}/.cargo/bin/{cmd}"),
         format!("/opt/homebrew/bin/{cmd}"),
         format!("/usr/local/bin/{cmd}"),
     ];
+    // Windows 路径
+    #[cfg(windows)]
+    {
+        let userprofile = std::env::var("USERPROFILE").unwrap_or_default();
+        fallbacks.push(format!("{userprofile}\\scoop\\shims\\{cmd}.exe"));
+        fallbacks.push(format!("{userprofile}\\.cargo\\bin\\{cmd}.exe"));
+    }
     for f in &fallbacks {
         let p = std::path::Path::new(f);
         if p.exists() {

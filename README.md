@@ -32,14 +32,18 @@ Tavily's free tier gives you 1,000 credits per key per month. If you have multip
 
 ### Prerequisites
 
-- **macOS** (Apple Silicon or Intel). Linux/Windows not supported yet (requires systemd / Windows Service).
+- **macOS, Linux, or Windows**
+  - macOS: Apple Silicon or Intel
+  - Linux: any distro with systemd (Ubuntu, Fedora, Arch, etc.)
+  - Windows: 10/11 (Task Scheduler)
 - **Rust toolchain** — Install with:
   ```bash
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
   ```
+  Windows: download from [rustup.rs](https://rustup.rs)
 - **Tavily API key(s)** — Sign up at [tavily.com](https://tavily.com) (free, 1,000 credits/month per key)
 
-### Steps
+### Steps (macOS / Linux)
 
 ```bash
 git clone https://github.com/ShengjiaCui/tavily-rotator.git
@@ -47,7 +51,21 @@ cd tavily-rotator
 ./scripts/install.sh
 ```
 
-The installer compiles the binary, installs it to `~/.local/bin/`, creates a launchd plist, and starts the daemon. Then:
+The installer auto-detects your platform and uses the native service manager:
+- **macOS** → launchd plist (`com.tavily-rotator`)
+- **Linux** → systemd user service (`tavily-rotator.service`)
+
+### Steps (Windows)
+
+```powershell
+git clone https://github.com/ShengjiaCui/tavily-rotator.git
+cd tavily-rotator
+powershell -ExecutionPolicy Bypass -File scripts/install-windows.ps1
+```
+
+Uses Task Scheduler (`TavilyRotator` task) for auto-start on login + crash restart.
+
+### After install (all platforms)
 
 1. Open **http://127.0.0.1:8731/** in your browser
 2. Click **"+ 添加"** to add your Tavily key(s)
@@ -63,17 +81,20 @@ The installer compiles the binary, installs it to `~/.local/bin/`, creates a lau
 
 ```
 You open a new terminal
-  → shell inherits $TAVILY_API_KEY from launchctl environment
-  → tvly CLI reads it, calls Tavily API, works
+  → shell reads the active key from the environment
+  → tvly CLI uses it, calls Tavily API, works
 
 Every N minutes (default 30, configurable):
   daemon queries active key's /usage
   → if remaining < threshold, rotate to next key
-  → launchctl setenv TAVILY_API_KEY <new key>
+  → push new key to system environment (platform-specific)
   → new terminals get the new key
 ```
 
-**Why `launchctl setenv` instead of a wrapper script?** It's persistent — even if the daemon crashes, the last-pushed key stays in the environment, so new terminals keep working. And `tvly` stays untouched.
+**Platform-specific key pushing:**
+- **macOS**: `launchctl setenv` (persistent, survives daemon crash)
+- **Linux**: writes `~/.config/tavily-rotator/active-env.sh`, sourced from `.bashrc`/`.zshrc`
+- **Windows**: writes registry `HKCU\Environment\TAVILY_API_KEY` + broadcasts `WM_SETTINGCHANGE`
 
 ## ⚙️ Configuration
 
@@ -123,8 +144,8 @@ tail -f ~/.local/share/tavily-rotator/daemon.log
 
 ## ⚠️ Known limitations
 
-- **macOS only** — Uses `launchd` for auto-start and `launchctl setenv` for key pushing. Linux (systemd) and Windows ports not yet available.
-- **Long-lived processes** — A terminal/Claude session/cron job started *before* a rotation keeps using the old key until restarted. The daemon rotates early (at 50 credits remaining) and warns in the UI to give you time. This is a deliberate tradeoff for simplicity — no wrapper script, `tvly` stays untouched.
+- **Long-lived processes** — A terminal/Claude session/cron job started *before* a rotation keeps using the old key until restarted. The daemon rotates early (at 50 credits remaining) and warns in the UI. This is a deliberate tradeoff for simplicity — no wrapper script, `tvly` stays untouched.
+- **Linux shells** — The active key is pushed via a file sourced from `.bashrc`/`.zshrc`. If you use fish/nush/elvish, you need to add the `source` line manually to your shell's config. Already-open shells don't get the update until reopened.
 - **Don't run `tvly login`** — It stores credentials locally and overrides the environment variable injection, breaking rotation. The dashboard warns you if it detects this.
 
 ## 🏗️ Development

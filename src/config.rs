@@ -105,7 +105,7 @@ impl Config {
         // 1. 写临时文件
         std::fs::write(&tmp, &content).map_err(|e| ConfigError::Write(tmp.clone(), e))?;
 
-        // 2. fsync 临时文件(确保数据落盘)
+        // 2. fsync 临时文件(确保数据落盘)— Unix 专属
         #[cfg(unix)]
         {
             use std::os::unix::io::AsRawFd;
@@ -115,10 +115,21 @@ impl Config {
             }
         }
 
-        // 3. rename → 目标(POSIX 原子)
-        std::fs::rename(&tmp, path).map_err(|e| ConfigError::Rename(tmp, path.to_path_buf(), e))?;
+        // 3. rename → 目标
+        //   Unix: POSIX 原子
+        //   Windows: std::fs::rename 在目标存在时会失败,用 MoveFileEx + REPLACE_EXISTING
+        #[cfg(unix)]
+        {
+            std::fs::rename(&tmp, path)
+                .map_err(|e| ConfigError::Rename(tmp, path.to_path_buf(), e))?;
+        }
+        #[cfg(windows)]
+        {
+            windows_rename(&tmp, path)
+                .map_err(|e| ConfigError::Rename(tmp, path.to_path_buf(), e))?;
+        }
 
-        // 4. chmod 0600(保险,文件可能被外部动过)
+        // 4. chmod 0600(保险)— Unix 专属
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -152,4 +163,34 @@ pub enum ConfigError {
     Rename(PathBuf, PathBuf, #[source] std::io::Error),
     #[error("chmod {0} 失败: {1}")]
     Chmod(PathBuf, #[source] std::io::Error),
+}
+
+/// Windows 原子 rename:用 MoveFileExW + MOVEFILE_REPLACE_EXISTING + MOVEFILE_WRITE_THROUGH。
+#[cfg(windows)]
+fn windows_rename(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::um::fileapi::MoveFileExW;
+    use winapi::um::winbase::{
+        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    fn to_wide(p: &Path) -> Vec<u16> {
+        p.as_os_str().encode_wide().chain(std::iter::once(0)).collect()
+    }
+
+    let from_w = to_wide(from);
+    let to_w = to_wide(to);
+
+    let ok = unsafe {
+        MoveFileExW(
+            from_w.as_ptr(),
+            to_w.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if ok == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
 }

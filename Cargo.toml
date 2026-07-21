@@ -1,29 +1,30 @@
 [package]
 name = "tavily-rotator"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "Tavily API key rotation daemon for macOS"
+description = "Tavily API key rotation daemon (macOS / Linux / Windows)"
 license = "MIT"
+repository = "https://github.com/ShengjiaCui/tavily-rotator"
+keywords = ["tavily", "api-keys", "rotation", "daemon"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 # HTTP 服务 + 客户端
+# reqwest 用 rustls-tls(纯 Rust,无系统 OpenSSL 依赖,交叉编译友好)
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # 序列化 + 配置
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 
-# 存储
+# 存储(SQLite,bundled 全平台自带源码编译)
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # 文件监听
 notify = "7"
-
-# 模板(Web UI,编译期)
-askama = "0.12"
 
 # 日志
 tracing = "0.1"
@@ -33,8 +34,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2"
 anyhow = "1"
 
-# libc(fsync / chmod / getuid)
+# Unix 专属:fsync / chmod / getuid
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# Windows 专属:注册表 + MoveFileEx
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+winapi = { version = "0.3", features = ["fileapi", "winbase", "errhandlingapi"] }
 
 [profile.release]
 # daemon 长期跑,优化体积 + 去符号
