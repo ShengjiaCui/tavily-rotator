@@ -77,17 +77,19 @@ jobs:
           cp target/${{ matrix.target }}/release/tavily-rotator artifact/
           cp -r scripts artifact/
           cp README.md artifact/
-          cd artifact && tar czf ../${{ matrix.artifact }}.tar.gz .
+          cd artifact && tar czf ../${{ matrix.artifact }}.tar.gz . && cd ..
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path artifact
-          Copy-Item "target/${{ matrix.target }}/release/tavily-rotator.exe" -Destination "artifact/"
-          Copy-Item -Recurse "scripts" -Destination "artifact/"
-          Copy-Item "README.md" -Destination "artifact/"
-          Compress-Archive -Path "artifact/*" -DestinationPath "../${{ matrix.artifact }}.zip"
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/tavily-rotator.exe" -Destination "artifact/" -Force
+          Copy-Item -Recurse "scripts" -Destination "artifact/" -Force
+          Copy-Item "README.md" -Destination "artifact/" -Force
+          Compress-Archive -Path "artifact\*" -DestinationPath "${{ matrix.artifact }}.zip" -Force
+          Write-Host "Created: ${{ matrix.artifact }}.zip"
+          Test-Path "${{ matrix.artifact }}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
