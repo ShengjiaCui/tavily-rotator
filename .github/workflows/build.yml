@@ -24,15 +24,16 @@ jobs:
       fail-fast: false  # 一个平台失败不影响其他
       matrix:
         include:
-          # macOS: Apple Silicon + Intel
+          # macOS: Apple Silicon(主)+ 在同一 runner 上 cross-compile x86_64
           - os: macos-latest
             arch: aarch64
             target: aarch64-apple-darwin
             artifact: tavily-rotator-macos-aarch64
-          - os: macos-13
+          - os: macos-latest
             arch: x86_64
             target: x86_64-apple-darwin
             artifact: tavily-rotator-macos-x86_64
+            cross: true  # 在 aarch64 runner 上交叉编译 x86_64
           # Linux: x86_64 + aarch64
           - os: ubuntu-latest
             arch: x86_64
