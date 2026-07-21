@@ -16,6 +16,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Release 上传需要写权限
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build (${{ matrix.os }} / ${{ matrix.arch }})
