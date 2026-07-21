@@ -104,3 +104,4 @@ jobs:
           files: |
             ${{ matrix.artifact }}.tar.gz
             ${{ matrix.artifact }}.zip
+            ${{ matrix.artifact }}.zip
